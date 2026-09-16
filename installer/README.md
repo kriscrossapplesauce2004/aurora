@@ -45,6 +45,15 @@ Boot partitions are resolved from the device's actual by-name links. Multiple ph
 never resolved by choosing the first device. The next question asks whether to
 install, build a port, or recover.
 
+The Magisk module payload is where the on-device toolkit lives: the module zip
+carries `tools/` (including the environment installer, session catalog, and
+session selection), `sessions/*.session` manifests, and `guest-tools/`. The
+workbench builds that module from `toggle/`, `guest/`, and `magisk-module/`, so a
+regular install delivers toolkit and manifest changes along with the kernel-side
+work; the module freshness inputs cover those directories. Verify installation
+checks that the toolkit, the catalogs, and the manifest set are present, because
+a device without them boots but cannot be provisioned from the companion.
+
 `aurora-installer install` accepts a schema 2 HTTPS manifest or a local manifest with its
 artifacts beside it. It selects a compatible Debian, Arch, or Alpine guest from
 the bundle, then asks for the Linux display name and hostname. The display name

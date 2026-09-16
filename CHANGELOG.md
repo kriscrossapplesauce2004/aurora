@@ -22,6 +22,10 @@ different and are recorded in the release manifest.
   artifact, replacing the unrelated bring-up-era component versions.
 - Internal phone-to-desktop handoff with SurfaceFlinger release, exclusive
   input transfer, and restoration to Android.
+- The workbench installs and now verifies the environment toolkit: the module
+  payload is required to carry the environment installer, session catalog and
+  selection, the guest platform adapter, and the session manifests, and the
+  post-install verification fails if any of them is missing on the device.
 - Distro-portable session requirements: manifest path fields accept `|`
   alternatives (`/usr/local/bin/phoc|/usr/bin/phoc`), `session-select` resolves
   them to the path that exists on the running guest before handing it to the

@@ -164,7 +164,9 @@ def validate_archive(path, kind, distro='debian'):
                     raise Failure('The ZIP contains an unsafe path.')
             if kind == 'module':
                 required = {'module.prop', 'customize.sh', 'tools/guest-distro', 'tools/desktop-on',
-                            'tools/env-install',
+                            'tools/env-install', 'tools/session-catalog', 'tools/session-select',
+                            'guest-tools/aurora-platform', 'sessions/phosh.session',
+                            'sessions/plasma-mobile.session',
                             'zygisk/arm64-v8a.so', 'zygisk/armeabi-v7a.so'}
                 if not required <= names or b'id=aurora' not in archive.read('module.prop').splitlines():
                     raise Failure('The module is incomplete or has the wrong module ID.')
@@ -1030,7 +1032,15 @@ fi
                    'test -f /data/aurora/active-guest/etc/os-release && '
                    'test -d /data/adb/modules/aurora && '
                    'test ! -f /data/adb/modules/aurora/disable', root=True)
-        self.log('Kernel, module, runtime, and guest installation checks passed. Graphics qualification is separate.')
+        # The companion installs desktop environments through these; a device
+        # without them boots but cannot be provisioned from the phone.
+        self.shell('test -x /data/aurora/bin/env-install && '
+                   'test -x /data/aurora/bin/session-catalog && '
+                   'test -x /data/aurora/bin/session-select && '
+                   'test -f /data/aurora/etc/sessions/phosh.session && '
+                   'test -x /data/aurora/guest-tools/aurora-platform', root=True)
+        self.log('Kernel, module, runtime, guest, and environment toolkit checks passed. '
+                 'Graphics qualification is separate.')
 
     def restore(self, device, backup):
         metadata = json.loads(Path(backup).with_name('backup.json').read_text())

@@ -33,7 +33,10 @@ def bundle(directory):
             if kind == 'module':
                 archive.writestr('module.prop', 'id=aurora\nversionCode=12\n')
                 for name in ('customize.sh', 'tools/guest-distro', 'tools/desktop-on',
-                             'tools/env-install', 'zygisk/arm64-v8a.so', 'zygisk/armeabi-v7a.so'):
+                             'tools/env-install', 'tools/session-catalog', 'tools/session-select',
+                             'guest-tools/aurora-platform', 'sessions/phosh.session',
+                             'sessions/plasma-mobile.session',
+                             'zygisk/arm64-v8a.so', 'zygisk/armeabi-v7a.so'):
                     archive.writestr(name, 'fixture')
             else:
                 archive.writestr('AndroidManifest.xml', 'fixture')
