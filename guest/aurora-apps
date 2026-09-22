@@ -11,7 +11,7 @@ import shlex
 import subprocess
 import sys
 
-VERSION = 1
+VERSION = 2
 BASE = (
     ('terminal', 'foot', 'foot', 'foot.desktop'),
     ('browser', 'firefox', 'firefox', 'firefox.desktop'),
@@ -25,7 +25,7 @@ EXTRAS = (
     ('archives', 'file-roller', 'file-roller', 'org.gnome.FileRoller.desktop'),
 )
 SUPPORT = ('desktop-file-utils', 'xdg-utils', 'xdg-user-dirs', 'ttf-dejavu',
-           'ttf-jetbrains-mono-nerd', 'inotify-tools',
+           'ttf-jetbrains-mono-nerd', 'ttf-material-symbols-variable', 'inotify-tools',
            'adwaita-icon-theme', 'shared-mime-info', 'fontconfig', 'gtk-update-icon-cache')
 PROFILES = ('base', 'extended', 'none')
 
