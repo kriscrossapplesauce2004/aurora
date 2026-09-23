@@ -4,21 +4,38 @@ import subprocess
 import threading
 
 
+FILTERED_DEVICE_LINE = re.compile(r'^Device ((?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2})(?: |$)')
+DEVICE_LINE = re.compile(r'Device ([0-9A-Fa-f:]{17}) (.*)')
+
+
 def fields(line):
-    result, part, escaped = [], '', False
+    result, part, escaped = [], [], False
     for char in line:
         if escaped:
-            part += char
+            part.append(char)
             escaped = False
         elif char == '\\':
             escaped = True
         elif char == ':':
-            result.append(part)
-            part = ''
+            result.append(''.join(part))
+            part = []
         else:
-            part += char
-    result.append(part + ('\\' if escaped else ''))
+            part.append(char)
+    if escaped:
+        part.append('\\')
+    result.append(''.join(part))
     return result
+
+
+def filtered_addresses(rows, candidates):
+    addresses = set()
+    for line in rows.splitlines():
+        match = FILTERED_DEVICE_LINE.match(line)
+        if match:
+            address = match.group(1).upper()
+            if address in candidates:
+                addresses.add(address)
+    return addresses
 
 
 class Connectivity:
@@ -70,9 +87,11 @@ class Connectivity:
                 powered = self.run('nmcli', 'radio', 'wifi') == 'enabled'
                 rows = self.run('nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY,DEVICE', 'device', 'wifi', 'list', '--rescan', 'yes' if verb == 'scan' else 'no') if powered else ''
                 items = []
+                seen_ssids = set()
                 for line in rows.splitlines():
                     row = fields(line)
-                    if len(row) == 5 and row[1] and not any(i['ssid'] == row[1] for i in items):
+                    if len(row) == 5 and row[1] and row[1] not in seen_ssids:
+                        seen_ssids.add(row[1])
                         items.append(dict(active=row[0] == '*', ssid=row[1], signal=row[2], security=row[3], device=row[4]))
                 items.sort(key=lambda i: (not i['active'], -int(i['signal'] or 0)))
             else:
@@ -87,13 +106,19 @@ class Connectivity:
                     self.run('bluetoothctl', '--timeout', '8', 'scan', 'on', timeout=12)
                 elif verb != 'refresh': raise ValueError('Unsupported operation')
                 powered = 'Powered: yes' in self.run('bluetoothctl', 'show')
-                items = []
+                devices = []
                 for line in self.run('bluetoothctl', 'devices').splitlines()[:40]:
-                    match = re.match(r'Device ([0-9A-Fa-f:]{17}) (.*)', line)
+                    match = DEVICE_LINE.match(line)
                     if not match: continue
                     address, name = match.groups()
-                    info = self.run('bluetoothctl', 'info', address, timeout=3)
-                    items.append(dict(address=address, name=name, active='Connected: yes' in info, paired='Paired: yes' in info))
+                    devices.append((address, name))
+                candidates = {address.upper() for address, _ in devices}
+                connected = filtered_addresses(self.run('bluetoothctl', 'devices', 'Connected'), candidates)
+                paired = filtered_addresses(self.run('bluetoothctl', 'devices', 'Paired'), candidates)
+                items = []
+                for address, name in devices:
+                    address_key = address.upper()
+                    items.append(dict(address=address, name=name, active=address_key in connected, paired=address_key in paired))
             self.emit({'event': 'connectivity', 'kind': kind, 'busy': False, 'powered': powered, 'items': items, 'error': ''})
         except (ValueError, OSError):
             import sys

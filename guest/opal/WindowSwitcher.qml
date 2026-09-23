@@ -9,10 +9,19 @@ Item {
     property bool active:visible
     property string query:""
     property bool currentWorkspace:false
+    readonly property string normalizedQuery:query.toLowerCase()
     readonly property bool touch:layoutMode==="phone"
     readonly property bool gaming:layoutMode==="console"
     readonly property bool touchCarousel:touch&&width<680
-    readonly property var windows:Hub.windows.filter(w=>(!currentWorkspace||w.workspace===Hub.status.workspace)&&(w.title+" "+w.className).toLowerCase().indexOf(query.toLowerCase())>=0)
+    readonly property var windowSearchIndex:Hub.windows.map(entry=>({entry:entry,search:(String(entry.title)+" "+String(entry.className)).toLowerCase()}))
+    readonly property var windows:{
+        const matches=[];
+        for(let index=0;index<windowSearchIndex.length;index+=1){
+            const candidate=windowSearchIndex[index];
+            if((!currentWorkspace||candidate.entry.workspace===Hub.status.workspace)&&(normalizedQuery===""||candidate.search.indexOf(normalizedQuery)>=0))matches.push(candidate.entry);
+        }
+        return matches;
+    }
     property int selection:0
     Component.onCompleted:{selection=Math.max(0,windows.findIndex(w=>Hub.active(w)));if(active&&!touch)forceActiveFocus();}
     onActiveChanged:if(active&&!touch)forceActiveFocus()
@@ -45,7 +54,7 @@ Item {
                 id:grid;anchors.fill:parent;visible:!s.touchCarousel;clip:true;model:s.touchCarousel ? [] : s.windows
                 readonly property int columns:Math.max(1,Math.floor(width/(s.touch ? 420 : s.gaming ? 320 : 270)))
                 cellWidth:width/columns;cellHeight:s.touch ? 360 : s.gaming ? 340 : 280
-                boundsBehavior:Flickable.StopAtBounds;ScrollBar.vertical:ScrollBar {}
+                boundsBehavior:Flickable.StopAtBounds;cacheBuffer:0;ScrollBar.vertical:ScrollBar {}
                 delegate:Item {id:gridDelegate;required property var modelData;required property int index;width:grid.cellWidth;height:grid.cellHeight
                     Loader {anchors.fill:parent;anchors.margins:6;sourceComponent:card;onLoaded:{item.entry=Qt.binding(()=>modelData);item.index=Qt.binding(()=>index);item.previewActive=Qt.binding(()=>s.active&&grid.visible&&gridDelegate.y+gridDelegate.height>grid.contentY&&gridDelegate.y<grid.contentY+grid.height);}}
                 }
@@ -54,7 +63,7 @@ Item {
                 id:carousel;anchors.left:parent.left;anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter
                 height:Math.min(parent.height,380);visible:s.touchCarousel;clip:true;model:s.touchCarousel ? s.windows : []
                 orientation:ListView.Horizontal;spacing:14;snapMode:ListView.SnapOneItem;boundsBehavior:Flickable.StopAtBounds
-                preferredHighlightBegin:16;preferredHighlightEnd:16;highlightRangeMode:ListView.StrictlyEnforceRange
+                preferredHighlightBegin:16;preferredHighlightEnd:16;highlightRangeMode:ListView.StrictlyEnforceRange;cacheBuffer:0
                 onCurrentIndexChanged:if(s.touchCarousel)s.selection=Math.max(0,currentIndex)
                 delegate:Item {id:carouselDelegate;required property var modelData;required property int index;width:Math.min(360,carousel.width*.84);height:carousel.height
                     Loader {anchors.fill:parent;anchors.margins:6;sourceComponent:card;onLoaded:{item.entry=Qt.binding(()=>modelData);item.index=Qt.binding(()=>index);item.previewActive=Qt.binding(()=>s.active&&carousel.visible&&carouselDelegate.x+carouselDelegate.width>carousel.contentX&&carouselDelegate.x<carousel.contentX+carousel.width);}}

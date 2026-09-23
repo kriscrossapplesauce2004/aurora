@@ -8,7 +8,19 @@ Item {
     property bool keyboardOpen:false
     property bool confirmingClear:false
     property string filter:""
-    property var items:Hub.clipboardItems.filter(item=>item.text.toLowerCase().indexOf(filter.toLowerCase().trim())>=0)
+    onFilterChanged:if(searchField.text!==filter)searchField.text=filter
+    readonly property string normalizedFilter:filter.toLowerCase().trim()
+    property var items: {
+        const query=normalizedFilter;
+        const source=Hub.clipboardItems;
+        if(!query)return source;
+        const matches=[];
+        for(let index=0;index<source.length;index++) {
+            const item=source[index];
+            if(item.text.toLowerCase().indexOf(query)>=0)matches.push(item);
+        }
+        return matches;
+    }
     function copySelected() {if(items.length)Hub.copyClipboard(items[Math.max(0,clipList.currentIndex)].id,true);}
     onItemsChanged:clipList.currentIndex=Math.max(0,Math.min(clipList.currentIndex,items.length-1))
     ColumnLayout {
@@ -27,7 +39,7 @@ spacing:14
             TextField {
                 id:searchField;anchors {fill:parent;leftMargin:50;rightMargin:44}
                 background:Item {}
-                text:cp.filter;placeholderText:"Find something you copied…";color:Theme.text;placeholderTextColor:Theme.muted
+                placeholderText:"Find something you copied…";color:Theme.text;placeholderTextColor:Theme.muted
                 font.family:Theme.font;font.pixelSize:14;selectByMouse:true
                 onTextEdited:{cp.filter=text;clipList.currentIndex=0;}
                 onActiveFocusChanged:if(activeFocus&&cp.touchMode)cp.keyboardOpen=true
@@ -62,9 +74,10 @@ icon:"close";compact:true;implicitWidth:34;implicitHeight:34;tooltip:"Clear sear
                 MText {text:cp.filter ? "Try another word." : Hub.clipboardPaused ? "Resume when you want to collect text again." : Hub.clipboardAvailable ? "Copy text and it’ll appear here.\nNothing is saved to disk." : Hub.clipboardDetail;width:parent.width;wrapMode:Text.Wrap;horizontalAlignment:Text.AlignHCenter;color:Theme.subtext;font.pixelSize:12}
             }
         }
-        SearchKeyboard {visible:cp.touchMode&&cp.keyboardOpen&&!Hub.systemOskReady;Layout.fillWidth:true;Layout.preferredHeight:Math.min(244,cp.height*.36)
-            onInsert:text=>cp.filter+=text
-            onErase:cp.filter=cp.filter.slice(0,-1)
+        SearchKeyboard {visible:cp.touchMode&&cp.keyboardOpen&&!Hub.systemOskReady;Layout.fillWidth:true;Layout.preferredHeight:Math.min(implicitHeight,cp.height*.38)
+            inputTarget:searchField;contextLabel:"Find clipboard text";returnLabel:"Done"
+            onInsert:cp.filter=searchField.text
+            onErase:cp.filter=searchField.text
             onAccept:{cp.keyboardOpen=false;searchField.focus=false;}
             onDismiss:{cp.keyboardOpen=false;searchField.focus=false;}
         }

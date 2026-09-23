@@ -10,44 +10,58 @@ PanelWindow {
     readonly property bool phone:layoutMode==="phone"
     readonly property bool autoHide:!phone&&!!Hub.prefs.taskbarAutoHide
     readonly property bool consoleMode:layoutMode==="console"
+    readonly property bool fullscreen:screen&&(Hub.status.fullscreenMonitors||[]).indexOf(screen.name)>=0
+    readonly property var taskbarMenuEntries:Hub.taskbarMenu()
     property bool revealed:false
-    property bool contextOpen:false
+    readonly property bool contextOpen:Hub.taskbarContextOpen&&Hub.taskbarContextScreen===bar.screen
+    property var activeStrip:null
     function openSection(section) {Hub.targetScreen=bar.screen;Hub.openSection(section);}
+    function openContextAt(item, x, y, entries, centered, title, icon) {
+        Hub.targetScreen=bar.screen;
+        const point=item.mapToItem(null,x,y);
+        const origin=centered ? item.mapToItem(null,0,0) : point;
+        const anchorX=centered ? origin.x+item.width/2 : point.x;
+        Hub.openTaskbarContext(bar.screen,anchorX,bar.screen.height-bar.height+origin.y,entries||bar.taskbarMenuEntries,centered,title,icon);
+        hideTimer.stop();
+    }
     anchors {bottom:true;left:true;right:true}
-    visible:!consoleMode
-    implicitHeight:phone ? (Hub.prefs.phoneButtons ? 64 : 48) : 56
-    exclusiveZone:(autoHide||consoleMode) ? 0 : implicitHeight
+    visible:!consoleMode&&!fullscreen
+    implicitHeight:phone ? (Hub.prefs.phoneButtons ? 64 : 48) : 64
+    exclusiveZone:(autoHide||consoleMode||fullscreen) ? 0 : implicitHeight
     color:"transparent"
     WlrLayershell.namespace:"opal-shelf"
-    mask:Region {item:hitRegion}
-    Item {id:hitRegion;x:0;y:bar.autoHide&&!bar.revealed ? bar.height-3 : 0;width:bar.width;height:bar.height-y}
+    WlrLayershell.layer:WlrLayer.Overlay
+    mask:Region {
+        Region {item:hitRegion;intersection:bar.phone||bar.autoHide&&!bar.revealed ? Intersection.Combine : Intersection.Subtract}
+        Region {item:desktopLoader.item ? desktopLoader.item.leftIsland : null}
+        Region {item:desktopLoader.item ? desktopLoader.item.rightIsland : null}
+    }
+    Item {id:hitRegion;x:body.x;y:bar.autoHide&&!bar.revealed ? bar.height-3 : 0;width:body.width;height:bar.height-y}
     MouseArea {anchors.fill:hitRegion;hoverEnabled:true;acceptedButtons:Qt.RightButton
         onEntered:{hideTimer.stop();bar.revealed=true;}
         onExited:hideTimer.restart()
-        onClicked:e=>taskbarMenu.popup(e.x,e.y)
+        onClicked:e=>bar.openContextAt(hitRegion,e.x,e.y,undefined,false,"Taskbar","desktop")
     }
-    Timer {id:hideTimer;interval:650;onTriggered:if(!bar.contextOpen&&!strip.interacting&&!strip.hovered)bar.revealed=false}
-    OpalMenu {id:taskbarMenu;entries:Hub.taskbarMenu();onOpened:{bar.contextOpen=true;hideTimer.stop();}onClosed:{bar.contextOpen=false;hideTimer.restart();}}
+    Timer {id:hideTimer;interval:650;onTriggered:if(!bodyHover.hovered&&!bar.contextOpen&&(!bar.activeStrip||(!bar.activeStrip.interacting&&!bar.activeStrip.hovered)))bar.revealed=false}
     Rectangle {
-        id:body;x:bar.phone ? 0 : 8
-        width:bar.width-(bar.phone ? 0 : 16);height:bar.height-(bar.phone ? 0 : 6)
-        radius:bar.phone ? 0 : 18;border.width:bar.phone ? 0 : 1;border.color:Theme.outline
+        id:body;x:0
+        width:bar.width;height:bar.height
+        radius:0;border.width:0
         y:bar.autoHide&&!bar.revealed ? height-3 : 0
-        color:Theme.alpha(Theme.base,Hub.prefs.glass*.65)
+        color:bar.phone ? Theme.alpha(Theme.dockTint,Hub.prefs.glass) : "transparent"
         Behavior on y {NumberAnimation {duration:Theme.motion(140);easing.type:Easing.OutCubic}}
+        HoverHandler {id:bodyHover;onHoveredChanged:{if(hovered){hideTimer.stop();bar.revealed=true;}else hideTimer.restart();}}
         Rectangle {visible:bar.phone;anchors.top:parent.top;width:parent.width;height:1;color:Theme.outline}
-        RowLayout {
-            visible:!bar.phone;anchors.fill:parent;anchors.leftMargin:8;anchors.rightMargin:8;anchors.topMargin:3;anchors.bottomMargin:3;spacing:6
-            MButton {icon:"apps";text:bar.width>1100 ? "Apps" : "";filled:true;compact:true;implicitHeight:38;onClicked:bar.openSection("apps")}
-            MButton {icon:"search";compact:true;implicitWidth:38;implicitHeight:38;tooltip:"Search apps, = calculator, > actions";onClicked:{Hub.query="";bar.openSection("apps");}}
-            Rectangle {width:1;height:24;color:Theme.outline}
-            TaskStrip {id:strip;Layout.fillWidth:true;Layout.fillHeight:true;labels:Hub.prefs.taskbarLabels!==false
-                onEngaged:{hideTimer.stop();bar.revealed=true;}
-                onReleased:hideTimer.restart()
-            }
-            MButton {icon:"desktop";text:bar.width>1200 ? "Open windows" : "";compact:true;implicitHeight:38;tooltip:"Running windows";onClicked:bar.openSection("windows")}
-            MButton {icon:"convergence";compact:true;implicitHeight:38;implicitWidth:38;tooltip:"Convergence · adapt your workspace";onClicked:{Hub.targetScreen=bar.screen;Hub.page="convergence";}menuEntries:Hub.taskbarMenu()}
-        }
-        PhoneNavigation {visible:bar.phone;anchors.fill:parent;output:bar.screen}
+        Loader {id:desktopLoader;anchors.fill:parent;active:!bar.phone;sourceComponent:desktopContent}
+        Loader {anchors.fill:parent;active:bar.phone;sourceComponent:phoneContent}
     }
+    Component {id:desktopContent;DesktopShelf {
+        output:bar.screen;panel:bar;panelHeight:bar.height
+        Component.onCompleted:bar.activeStrip=strip
+        Component.onDestruction:bar.activeStrip=null
+        onEngaged:{hideTimer.stop();bar.revealed=true;}
+        onReleased:hideTimer.restart()
+        onContextRequested:(item,x,y)=>bar.openContextAt(item,x,y,undefined,true,"Applications","apps")
+    }}
+    Component {id:phoneContent;PhoneNavigation {anchors.fill:parent;output:bar.screen}}
 }

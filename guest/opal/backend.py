@@ -8,7 +8,11 @@ HOME = pathlib.Path.home()
 STORE = HOME / '.local/state/aurora-opal/preferences.json'
 lock = threading.Lock()
 prefs_lock = threading.Lock()
+JSON_SEPARATORS = (',', ':')
 system_osk = None
+# Quick Settings tile identifiers. The shell can reorder or hide these, but not add unknown ones.
+QUICK_TILE_IDS = ('wifi','bluetooth','dnd','awake','theme','saver','mic','keyboard','motion','capture','autohide','clipboard','focus','convergence')
+QUICK_TILE_DEFAULT = ('wifi','bluetooth','dnd','awake','theme','saver','mic','keyboard')
 def emit(data):
     with lock:
         print(json.dumps(data), flush=True)
@@ -29,6 +33,10 @@ def load():
     base['phoneDisplay'] = ''
     base['taskbarOrder'] = []
     base['reduceMotion'] = False
+    base['taskbarCenter'] = False
+    base['taskbarClockDate'] = True
+    base['quickTiles'] = list(QUICK_TILE_DEFAULT)
+    base['phoneRows'] = 5
     base.update(WALLPAPER_DEFAULTS)
     try: base.update(json.loads(STORE.read_text()))
     except (OSError, ValueError): pass
@@ -37,21 +45,67 @@ prefs = load()
 def save():
     STORE.parent.mkdir(parents=True, exist_ok=True)
     temp = STORE.with_suffix('.tmp')
-    temp.write_text(json.dumps(prefs, indent=2))
+    temp.write_text(json.dumps(prefs, separators=JSON_SEPARATORS))
     temp.replace(STORE)
     emit({'event':'preferences', 'data':prefs.copy()})
     if system_osk: system_osk.refresh(prefs)
+
+def exit_with_parent():
+    """Ask Linux to send SIGTERM to this child when the backend dies, so a reload never leaves an orphan keyboard."""
+    try:
+        import ctypes, signal as signals
+        ctypes.CDLL('libc.so.6',use_errno=True).prctl(1,signals.SIGTERM,0,0,0)
+    except (OSError,AttributeError):
+        pass
+
+VIRTUAL_KEYBOARD_WORDS=('virtual','uinput','ydotool','input-remapper','keyd','kanata','power button','sleep button','video bus','consumer control','system control','hotkeys','wmi')
+
+def physical_keyboard_present(devices=None):
+    """Report a real hardware keyboard: a kernel keyboard handler with LED support that is not a known virtual device."""
+    try:
+        text=devices if devices is not None else pathlib.Path('/proc/bus/input/devices').read_text(errors='replace')
+    except OSError:
+        return False
+    for block in text.split('\n\n'):
+        name=re.search(r'^N: Name="([^"]*)"',block,re.M)
+        handlers=re.search(r'^H: Handlers=(.*)$',block,re.M)
+        events=re.search(r'^B: EV=([0-9a-f]+)',block,re.M)
+        if not (name and handlers and events):continue
+        if 'kbd' not in handlers.group(1).split():continue
+        # EV bit 17 is LED: full keyboards have lock lights, media buttons and remotes do not.
+        if not int(events.group(1),16)&(1<<17):continue
+        if any(word in name.group(1).lower() for word in VIRTUAL_KEYBOARD_WORDS):continue
+        return True
+    return False
+
+def keyboard_command():
+    """Return the system keyboard argument list and its name. Borealis is preferred; Squeekboard is the fallback."""
+    override=os.environ.get('OPAL_KEYBOARD','')
+    candidates=[override] if override else []
+    candidates+=[shutil.which('opal-keyboard') or '',str(HOME/'.local'/'bin'/'opal-keyboard')]
+    for path in candidates:
+        if path and os.access(path,os.X_OK) and pathlib.Path(path).is_file():
+            # Borealis reads the Opal preference file itself, so it needs no theme wrapper.
+            return [path],'Borealis'
+    squeekboard=shutil.which('squeekboard')
+    launcher=pathlib.Path(__file__).with_name('osk_theme.py')
+    if squeekboard and launcher.is_file():
+        return [sys.executable,str(launcher),'--preferences',str(STORE),'--',squeekboard],'Squeekboard'
+    return None,'No system keyboard is installed (Borealis or Squeekboard)'
 
 class SystemOsk:
     def __init__(self):
         self.process = None
         self.generation = 0
         self.signature = ''
+        self.name = 'System keyboard'
+        self.hardware = False
+        self.explicit = False
         self.lock = threading.Lock()
 
     def theme_signature(self, values):
         subset={key:values.get(key) for key in ('light','palette','dynamicColors','dynamicPalette','colorScheme')}
-        return json.dumps(subset, sort_keys=True, separators=(',',':'))
+        return json.dumps(subset, sort_keys=True, separators=JSON_SEPARATORS)
 
     def publish(self, available, running, detail='', visible=False):
         emit({'event':'systemOsk','available':bool(available),'running':bool(running),'visible':bool(visible),'detail':detail})
@@ -81,11 +135,12 @@ class SystemOsk:
                 self.publish(True,True,'Wayland input method',visible)
                 return
             time.sleep(.1)
-        self.publish(True,False,'Squeekboard did not register its session D-Bus service')
+        self.publish(True,False,self.name+' did not register its session D-Bus service')
 
     def set_visible(self, visible):
         if not self.process or self.process.poll() is not None:
-            self.start()
+            if not visible:return True
+            self.start(explicit=True)
         deadline=time.monotonic()+2.5
         while time.monotonic()<deadline:
             if self.visible() is not None:break
@@ -103,31 +158,53 @@ class SystemOsk:
                 return True
             except (OSError,subprocess.SubprocessError):
                 continue
-        self.publish(bool(shutil.which('squeekboard')),False,'System keyboard control is unavailable')
+        self.publish(bool(keyboard_command()[0]),False,'System keyboard control is unavailable')
         return False
 
     def toggle(self):
         visible=self.visible()
         return self.set_visible(not bool(visible))
 
-    def start(self):
+    def auto(self):
+        """Run the keyboard only without a hardware keyboard, and follow keyboard hotplug."""
+        threading.Thread(target=self.follow_hardware,daemon=True).start()
+
+    def follow_hardware(self):
+        last=None
+        while True:
+            present=physical_keyboard_present()
+            if present!=last:
+                last=present
+                self.hardware=present
+                with self.lock: running=bool(self.process and self.process.poll() is None)
+                if present and running and not self.explicit:
+                    self.stop()
+                    self.publish(True,False,'Hidden while a hardware keyboard is connected')
+                elif not present and not running:
+                    self.start()
+                elif present and not running:
+                    self.publish(bool(keyboard_command()[0]),False,'Hidden while a hardware keyboard is connected')
+            time.sleep(3)
+
+    def start(self, explicit=False):
+        self.explicit=explicit
         if os.environ.get('OPAL_SYSTEM_OSK','1') in ('0','false','no'):
             self.publish(False,False,'System keyboard disabled by OPAL_SYSTEM_OSK')
             return
-        executable=shutil.which('squeekboard')
-        if not executable:
-            self.publish(False,False,'Squeekboard is not installed')
+        command,name=keyboard_command()
+        if not command:
+            self.publish(False,False,name)
             return
-        launcher=pathlib.Path(__file__).with_name('osk_theme.py')
-        if not launcher.is_file():
-            self.publish(False,False,'Opal keyboard theme launcher is missing')
-            return
+        # With a hardware keyboard, Borealis only appears on request, never on text focus.
+        if name=='Borealis' and physical_keyboard_present():
+            command=command+['--manual']
         with self.lock:
             if self.process and self.process.poll() is None: return
             self.generation+=1
             generation=self.generation
+            self.name=name
             try:
-                self.process=subprocess.Popen([sys.executable,str(launcher),'--preferences',str(STORE),'--',executable],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
+                self.process=subprocess.Popen(command,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True,preexec_fn=exit_with_parent)
             except OSError as error:
                 self.process=None
                 self.publish(True,False,str(error))
@@ -143,7 +220,7 @@ class SystemOsk:
         with self.lock:
             if generation!=self.generation or process is not self.process: return
             self.process=None
-        detail='Squeekboard exited' if code==0 else f'Squeekboard exited with status {code}'
+        detail=self.name+' exited' if code==0 else f'{self.name} exited with status {code}'
         self.publish(True,False,detail)
 
     def stop(self):
@@ -168,7 +245,8 @@ class SystemOsk:
         if signature==self.signature: return
         self.signature=signature
         with self.lock: running=bool(self.process and self.process.poll() is None)
-        if running: threading.Thread(target=self.restart,daemon=True).start()
+        # Borealis follows theme changes itself; only the Squeekboard wrapper needs a restart.
+        if running and self.name!='Borealis': threading.Thread(target=self.restart,daemon=True).start()
 
 def settings(which):
     choices = {
@@ -186,16 +264,16 @@ def settings(which):
         if shutil.which(cmd[0]): spawn(cmd); return
     emit({'event':'message','text':'No compatible application installed'})
 
+CALCULATOR_OPS = {ast.Add:operator.add, ast.Sub:operator.sub, ast.Mult:operator.mul, ast.Div:operator.truediv, ast.Mod:operator.mod, ast.Pow:operator.pow}
 def calculate(expr):
     # Deliberately tiny calculator, never Python eval or shell execution.
-    ops = {ast.Add:operator.add, ast.Sub:operator.sub, ast.Mult:operator.mul, ast.Div:operator.truediv, ast.Mod:operator.mod, ast.Pow:operator.pow}
     def visit(n):
         if isinstance(n,ast.Constant) and type(n.value) in (int,float): return n.value
         if isinstance(n,ast.UnaryOp) and isinstance(n.op,(ast.UAdd,ast.USub)): return visit(n.operand) * (-1 if isinstance(n.op,ast.USub) else 1)
-        if isinstance(n,ast.BinOp) and type(n.op) in ops:
+        if isinstance(n,ast.BinOp) and type(n.op) in CALCULATOR_OPS:
             a,b=visit(n.left),visit(n.right)
             if abs(a)>1e15 or abs(b)>1e15 or isinstance(n.op,ast.Pow) and abs(b)>12: raise ValueError()
-            return ops[type(n.op)](a,b)
+            return CALCULATOR_OPS[type(n.op)](a,b)
         raise ValueError()
     try:
         if len(expr)>100: raise ValueError()
@@ -209,6 +287,10 @@ clipboard = ClipboardHistory(emit)
 from connectivity import Connectivity
 connectivity = Connectivity(emit)
 from hypr_actions import HyprActions
+from power_status import (connected_bluetooth_devices, cpu_governor,
+                          merge_batteries, parse_bluetooth_battery,
+                          parse_upower_batteries, primary_battery,
+                          system_batteries)
 hypr_actions = HyprActions()
 
 
@@ -229,7 +311,9 @@ def commands():
             c=json.loads(line); action=c.get('action')
             if action=='preference':
                 key=c.get('key'); value=c.get('value')
-                valid = key=='controllerLayout' and value in ('standard','nintendo') or key=='mode' and value in ('auto','desktop','phone','console') or key in ('palette','wallpaper') and type(value)==int and 0<=value<=3 or key in ('light','dnd','taskbarAutoHide','taskbarLabels','phoneButtons','reduceMotion') and type(value)==bool or key=='glass' and type(value) in (int,float) and .45<=value<=1
+                valid = key=='controllerLayout' and value in ('standard','nintendo') or key=='mode' and value in ('auto','desktop','phone','console') or key in ('palette','wallpaper') and type(value)==int and 0<=value<=3 or key in ('light','dnd','taskbarAutoHide','taskbarLabels','phoneButtons','reduceMotion','taskbarCenter','taskbarClockDate') and type(value)==bool or key=='glass' and type(value) in (int,float) and .45<=value<=1
+                valid = valid or key=='quickTiles' and isinstance(value,list) and len(value)<=len(QUICK_TILE_IDS) and all(v in QUICK_TILE_IDS for v in value) and len(set(value))==len(value)
+                valid = valid or key=='phoneRows' and type(value)==int and 4<=value<=7
                 valid = valid or valid_preference(key, value)
                 valid = valid or key=='taskbarOrder' and isinstance(value,list) and len(value)<=128 and all(isinstance(v,str) and 0<len(v)<300 for v in value) and len(set(value))==len(value)
                 valid = valid or key=='phoneDisplay' and isinstance(value,str) and 0<len(value)<=128 and all(ch.isalnum() or ch in '_.:-' for ch in value)
@@ -257,7 +341,7 @@ def commands():
                         prefs.update(extra)
                         prefs['wallpaperPath'] = path.as_uri() if path else ''
                         save()
-                    emit({'event':'message','text':'Wallpaper updated' if path else 'Built-in wallpaper restored'})
+                    emit({'event':'message','text':'Wallpaper updated' if path else 'Plain background restored'})
                 except (ValueError, OSError) as error:
                     emit({'event':'message','text':str(error)})
             elif action=='matugen':
@@ -288,9 +372,10 @@ def commands():
                         elif action=='pin': items.append(app)
                         if action=='recent': items.insert(0,app)
                         prefs[key]=items[:24]; save()
-            elif action in ('focus-window','workspace'):
+            elif action in ('focus-window','workspace','move-window'):
                 try:
                     if action=='focus-window':hypr_actions.focus(c.get('address'))
+                    elif action=='move-window':hypr_actions.move(c.get('address'),c.get('number'),c.get('follow') is True)
                     else:hypr_actions.workspace(c.get('number'))
                 except (ValueError,OSError,subprocess.SubprocessError) as error:
                     emit({'event':'message','text':str(error)})
@@ -341,6 +426,8 @@ last_cpu=None
 status_workers=ThreadPoolExecutor(max_workers=8, thread_name_prefix='opal-status')
 status_cache={}
 status_cache_lock=threading.Lock()
+connected_battery_cache={'signature':(), 'time':0, 'items':[]}
+connected_battery_cache_lock=threading.Lock()
 
 def status_probe(specs):
     futures={}
@@ -363,10 +450,33 @@ def status_probe(specs):
                 break
     return values
 
+
+def connected_bluetooth_batteries(rows):
+    """Read connected Bluetooth battery levels at a bounded refresh rate."""
+    devices = connected_bluetooth_devices(rows)
+    signature = tuple(address for address, _ in devices)
+    now = time.monotonic()
+    with connected_battery_cache_lock:
+        cached = connected_battery_cache
+        if cached['signature'] == signature and now-cached['time'] < 20:
+            return cached['items']
+    futures = [(address, name, status_workers.submit(run, 'bluetoothctl', 'info', address)) for address, name in devices[:8]]
+    batteries = []
+    for address, name, future in futures:
+        try:
+            battery = parse_bluetooth_battery(address, name, future.result())
+        except Exception:
+            battery = None
+        if battery:
+            batteries.append(battery)
+    with connected_battery_cache_lock:
+        connected_battery_cache.update(signature=signature, time=now, items=batteries)
+    return batteries
+
 def status():
     global last_cpu
     # Compositor fields arrive independently from hypr_events, never from this poll.
-    s={'volume':0,'muted':False,'network':'Offline','wifi':False,'bluetooth':False,'track':'','artist':'','art':'','playing':False,'battery':-1,'charging':False,'brightness':-1,'cpu':0,'memory':0,'profile':'','uptime':''}
+    s={'volume':0,'muted':False,'network':'Offline','wifi':False,'bluetooth':False,'track':'','artist':'','art':'','playing':False,'battery':-1,'batteries':[],'charging':False,'brightness':-1,'cpu':0,'memory':0,'profile':'','governor':'','uptime':''}
     values=status_probe([
         ('volume',('wpctl','get-volume','@DEFAULT_AUDIO_SINK@'),0),
         ('audioOutput',('wpctl','inspect','@DEFAULT_AUDIO_SINK@'),10),
@@ -376,6 +486,8 @@ def status():
         ('bluetooth',('bluetoothctl','show'),5),
         ('media',('playerctl','metadata','--format','{{title}}\n{{artist}}\n{{mpris:artUrl}}\n{{status}}'),0),
         ('profile',('powerprofilesctl','get'),10),
+        ('upower',('upower','-d'),20),
+        ('connectedBluetooth',('bluetoothctl','devices','Connected'),20),
     ])
     v=values['volume']
     try: s['volume']=round(float(v.split()[1])*100)
@@ -393,10 +505,9 @@ def status():
         for i,k in enumerate(('track','artist','art')):
             if len(meta)>i: s[k]=meta[i]
         s['playing']=len(meta)>3 and meta[3]=='Playing'
-    for b in ['/sys/class/power_supply/bms/capacity', *glob.glob('/sys/class/power_supply/BAT*/capacity')]:
-        try:
-            s['battery']=int(pathlib.Path(b).read_text()); s['charging']=pathlib.Path(b).with_name('status').read_text().strip()=='Charging'
-        except (OSError,ValueError): pass
+    batteries=merge_batteries(system_batteries(), parse_upower_batteries(values['upower']), connected_bluetooth_batteries(values['connectedBluetooth']))
+    s['batteries']=batteries
+    s['battery'],s['charging']=primary_battery(batteries)
     for b in glob.glob('/sys/class/backlight/*'):
         try: s['brightness']=round(int(pathlib.Path(b,'brightness').read_text())/int(pathlib.Path(b,'max_brightness').read_text())*100)
         except (OSError,ValueError,ZeroDivisionError): pass
@@ -410,10 +521,11 @@ def status():
         s['uptime']=str(hrs)+'h'
     except (OSError,ValueError,KeyError): pass
     s['profile']=values['profile']
+    s['governor']=cpu_governor()
     return s
 
 def library_art():
-    """Index Steam's existing local artwork; never download library assets."""
+    """Index existing local Steam artwork. Never download assets."""
     result={}
     bases=[HOME/'.local/share/Steam/appcache/librarycache', HOME/'.steam/steam/appcache/librarycache']
     seen=set()
@@ -422,15 +534,29 @@ def library_art():
             resolved=base.resolve()
             if resolved in seen or not base.is_dir(): continue
             seen.add(resolved)
-            for pattern in ('*/*','*/*/*','*'):
-                for path in base.glob(pattern):
-                    if not path.is_file(): continue
-                    relative=path.relative_to(base)
-                    appid=relative.parts[0] if len(relative.parts)>1 else path.name.split('_',1)[0]
-                    if not appid.isdigit(): continue
-                    name=path.stem.lower()
-                    kind='cover' if '600x900' in name or 'library_capsule' in name else 'hero' if 'library_hero' in name and 'blur' not in name else 'header' if 'library_header' in name else None
-                    if kind: result.setdefault(appid,{})[kind]=path.resolve().as_uri()
+            def add(path_entry, appid):
+                if not appid.isdigit(): return
+                name=path_entry.name.rsplit('.',1)[0].lower()
+                kind='cover' if '600x900' in name or 'library_capsule' in name else 'hero' if 'library_hero' in name and 'blur' not in name else 'header' if 'library_header' in name else None
+                if kind: result.setdefault(appid,{})[kind]=pathlib.Path(path_entry.path).resolve().as_uri()
+            directories=[]
+            with os.scandir(base) as entries:
+                for entry in entries:
+                    if entry.is_file():
+                        add(entry, entry.name.split('_',1)[0])
+                    elif entry.is_dir():
+                        directories.append((entry, entry.name, 0))
+            while directories:
+                entry, appid, depth=directories.pop()
+                try:
+                    with os.scandir(entry.path) as entries:
+                        for path_entry in entries:
+                            if path_entry.is_file():
+                                add(path_entry, appid)
+                            elif depth < 1 and path_entry.is_dir():
+                                directories.append((path_entry, appid, depth+1))
+                except OSError:
+                    continue
         except OSError: continue
     return result
 

@@ -41,12 +41,19 @@ spacing:10
                 ColumnLayout {anchors {fill:parent;margins:24}
 spacing:18
                     RowLayout {Glyph {name:"cpu";color:Theme.tertiary}MText {text:"Under the hood";font.pixelSize:21;font.weight:Font.DemiBold}}
-                    Repeater {model:[{label:"Processor",value:Hub.status.cpu},{label:"Memory",value:Hub.status.memory}]
-                        ColumnLayout {required property var modelData;Layout.fillWidth:true;spacing:10
-                            RowLayout {MText {text:modelData.label;Layout.fillWidth:true;color:Theme.subtext}MText {text:modelData.value+"%";font.weight:Font.Bold}}
-                            Rectangle {Layout.fillWidth:true;height:12;radius:6;color:Theme.surfaceHigh
-                                Rectangle {width:parent.width*modelData.value/100;height:12;radius:6;color:Theme.tertiary;Behavior on width {NumberAnimation {duration:400}}}
-                            }
+                    // Keep these delegates mounted. Hub.status is replaced on
+                    // every poll, and an inline array model rebuilt this card
+                    // every time, which replayed its entrance animation.
+                    ColumnLayout {Layout.fillWidth:true;spacing:10
+                        RowLayout {MText {text:"Processor";Layout.fillWidth:true;color:Theme.subtext}MText {text:Hub.status.cpu+"%";font.weight:Font.Bold}}
+                        Rectangle {Layout.fillWidth:true;height:12;radius:6;color:Theme.surfaceHigh
+                            Rectangle {width:parent.width*Math.max(0,Math.min(100,Hub.status.cpu))/100;height:12;radius:6;color:Theme.tertiary;Behavior on width {NumberAnimation {duration:400}}}
+                        }
+                    }
+                    ColumnLayout {Layout.fillWidth:true;spacing:10
+                        RowLayout {MText {text:"Memory";Layout.fillWidth:true;color:Theme.subtext}MText {text:Hub.status.memory+"%";font.weight:Font.Bold}}
+                        Rectangle {Layout.fillWidth:true;height:12;radius:6;color:Theme.surfaceHigh
+                            Rectangle {width:parent.width*Math.max(0,Math.min(100,Hub.status.memory))/100;height:12;radius:6;color:Theme.tertiary;Behavior on width {NumberAnimation {duration:400}}}
                         }
                     }
                     Item {Layout.fillHeight:true}

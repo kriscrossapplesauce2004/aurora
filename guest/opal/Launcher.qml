@@ -7,12 +7,18 @@ Item {
     id:l
     property bool phone:width<650
     property bool consoleMode:Hub.prefs.mode==="console"
+    property bool keyboardOpen:false
     property string section:Hub.launcherSection
-    property var results:Hub.searchApps(Hub.query,Hub.query!=="" ? "All apps" : Hub.category)
     property bool special:Hub.query.startsWith("=") || Hub.query.startsWith("?") || Hub.query.startsWith(">")
+    property var results:special ? [] : Hub.searchApps(Hub.query,Hub.query!=="" ? "All apps" : Hub.category)
     property int columns:Math.max(2,Math.floor(grid.width/(consoleMode ? 190 : 136)))
     property var commands:[{name:"Take a screenshot",icon:"capture",action:"screenshot"},{name:"Lock device",icon:"lock",action:"lock"},{name:"Quick settings",icon:"settings",action:"controls"},{name:"Start a focus session",icon:"timer",action:"focus"},{name:"Phone mode",icon:"phone",action:"phone"},{name:"Console mode",icon:"game",action:"console"},{name:"Desktop mode",icon:"desktop",action:"desktop"}]
-    property var filteredCommands:commands.filter(c=>c.name.toLowerCase().indexOf(Hub.query.slice(1).trim().toLowerCase())>=0)
+    readonly property var categories:["All apps","Pinned","Games","Create","Work","Internet","System"]
+    readonly property var railSections:[{id:"apps",icon:"apps",label:"Apps"},{id:"widgets",icon:"grid",label:"At a glance"},{id:"windows",icon:"desktop",label:"Open"},{id:"style",icon:"palette",label:"Style"}]
+    readonly property var phoneSections:[{id:"apps",icon:"apps"},{id:"widgets",icon:"grid"},{id:"windows",icon:"desktop"},{id:"style",icon:"palette"}]
+    readonly property string commandQuery:Hub.query.slice(1).trim().toLowerCase()
+    property var filteredCommands:commands.filter(c=>c.name.toLowerCase().indexOf(commandQuery)>=0)
+    onSectionChanged:if(section!=="apps")keyboardOpen=false
     function invokeCommand(c) {
         if(c.action==="screenshot")Hub.screenShot();
         else if(c.action==="lock")Hub.settings("lock");
@@ -30,13 +36,19 @@ Item {
         if(key==="back") {if(Hub.query!=="")Hub.query="";else Hub.close();return;}
         if(key==="accept") {accept();return;}
         if(key==="nextTab" || key==="previousTab") {
-            const cats=["All apps","Games","Pinned","Create","Work","Internet","System"];
-            Hub.category=cats[(cats.indexOf(Hub.category)+(key==="nextTab" ? 1 : cats.length-1))%cats.length];return;
+            Hub.category=categories[(categories.indexOf(Hub.category)+(key==="nextTab" ? 1 : categories.length-1))%categories.length];return;
         }
-        const diff={left:-1,right:1,up:-columns,down:columns}[key];
-        if(diff!==undefined) {grid.currentIndex=Math.max(0,Math.min(results.length-1,grid.currentIndex+diff));grid.positionViewAtIndex(grid.currentIndex,GridView.Contain);grid.forceActiveFocus();}
+        const diff=key==="left" ? -1 : key==="right" ? 1 : key==="up" ? -columns : key==="down" ? columns : undefined;
+        if(diff!==undefined) {
+            const next=Math.max(0,Math.min(results.length-1,grid.currentIndex+diff));
+            if(next!==grid.currentIndex) {grid.currentIndex=next;grid.positionViewAtIndex(next,GridView.Contain);grid.forceActiveFocus();}
+        }
     }
-    Connections {target:Hub; function onNavigate(key) {if(Hub.page==="launcher")l.navigation(key);} }
+    Connections {
+        target:Hub
+        function onNavigate(key) {if(Hub.page==="launcher")l.navigation(key);}
+        function onQueryChanged() {if(search.text!==Hub.query)search.text=Hub.query;}
+    }
     onResultsChanged:grid.currentIndex=0
     Component.onCompleted:if(section==="apps"){if(!consoleMode)search.forceActiveFocus();else grid.forceActiveFocus();}
     RowLayout {
@@ -50,7 +62,7 @@ spacing:18
                 Flower {width:36;height:36;anchors.horizontalCenter:parent.horizontalCenter;fill:Theme.primary;lobes:8
                     Glyph {anchors.centerIn:parent;name:"spark";color:Theme.onPrimary}
                 }
-                Repeater {model:[{id:"apps",icon:"apps",label:"Apps"},{id:"widgets",icon:"grid",label:"At a glance"},{id:"windows",icon:"desktop",label:"Open"},{id:"style",icon:"palette",label:"Style"}]
+                Repeater {model:l.railSections
                     Column {required property var modelData;width:76;spacing:6
                         MButton {anchors.horizontalCenter:parent.horizontalCenter;implicitWidth:64;implicitHeight:48;icon:modelData.icon;tonal:l.section===modelData.id;tooltip:modelData.label;onClicked:Hub.launcherSection=modelData.id}
                         MText {width:parent.width;text:modelData.label;font.pixelSize:10;horizontalAlignment:Text.AlignHCenter;color:l.section===modelData.id ? Theme.primary : Theme.subtext}
@@ -70,7 +82,7 @@ icon:"settings";tooltip:"Quick settings";onClicked:Hub.page="controls"}
                 MButton {icon:"close";tooltip:"Close · Escape";onClicked:Hub.close()}
             }
             RowLayout {visible:l.phone;Layout.fillWidth:true;spacing:4
-                Repeater {model:[{id:"apps",icon:"apps"},{id:"widgets",icon:"grid"},{id:"windows",icon:"desktop"},{id:"style",icon:"palette"}]
+                Repeater {model:l.phoneSections
                     MButton {required property var modelData;Layout.fillWidth:true;icon:modelData.icon;tonal:l.section===modelData.id;onClicked:Hub.launcherSection=modelData.id}
                 }
             }
@@ -89,6 +101,7 @@ color:Theme.text;placeholderTextColor:Theme.muted
                     onAccepted:l.accept()
                     Keys.onDownPressed:l.navigation("down")
                     Keys.onEscapePressed:Hub.close()
+                    TapHandler {onTapped:if(l.phone)l.keyboardOpen=true}
                 }
                 MButton {anchors {right:parent.right;verticalCenter:parent.verticalCenter;rightMargin:8}
 icon:Hub.query!=="" ? "close" : "spark";compact:true;tooltip:Hub.query!=="" ? "Clear search" : "Search actions";onClicked:{Hub.query=Hub.query!=="" ? "" : ">";search.forceActiveFocus();}}
@@ -97,8 +110,8 @@ icon:Hub.query!=="" ? "close" : "spark";compact:true;tooltip:Hub.query!=="" ? "C
             Flickable {
                 visible:l.section==="apps"&&!l.special;Layout.fillWidth:true;Layout.preferredHeight:42;contentWidth:filters.width;clip:true;flickableDirection:Flickable.HorizontalFlick
                 Row {id:filters;spacing:6
-                    Repeater {model:["All apps","Pinned","Games","Create","Work","Internet","System"]
-                        MButton {required property string modelData;text:modelData;compact:true;filled:Hub.category===modelData;tonal:false;onClicked:Hub.category=modelData}
+                    Repeater {model:l.categories
+                        Chip {required property string modelData;text:modelData;selected:Hub.category===modelData;glass:!selected;implicitHeight:34;icon:({"All apps":"apps","Pinned":"keep","Games":"game","Create":"brush","Work":"work","Internet":"web","System":"settings"})[modelData]||"";onClicked:Hub.category=modelData}
                     }
                 }
             }
@@ -146,7 +159,7 @@ spacing:12
                         }
                         MouseArea {anchors.fill:parent;onClicked:l.accept()}
                     }
-                    Repeater {model:Hub.query.startsWith(">") ? l.filteredCommands : []
+                    Repeater {model:l.special && Hub.query.startsWith(">") ? l.filteredCommands : []
                         MButton {required property var modelData;Layout.fillWidth:true;text:modelData.name;icon:modelData.icon;tonal:true;onClicked:l.invokeCommand(modelData)}
                     }
                     Item {Layout.fillHeight:true}
@@ -155,6 +168,15 @@ spacing:12
             Dashboard {visible:l.section==="widgets";Layout.fillWidth:true;Layout.fillHeight:true;compact:l.phone}
             Appearance {visible:l.section==="style";Layout.fillWidth:true;Layout.fillHeight:true;compact:l.phone}
             WindowSwitcher {visible:l.section==="windows";Layout.fillWidth:true;Layout.fillHeight:true;layoutMode:"desktop";active:visible}
+            SearchKeyboard {
+                visible:l.phone&&l.section==="apps"&&l.keyboardOpen&&!Hub.systemOskReady
+                Layout.fillWidth:true;Layout.preferredHeight:Math.min(implicitHeight,l.height*.38)
+                inputTarget:search;contextLabel:"Search apps & more";returnLabel:"Search"
+                onInsert:{Hub.query=search.text;if(Hub.query.startsWith("="))Hub.command({action:"calculate",text:Hub.query.slice(1).trim()});}
+                onErase:{Hub.query=search.text;if(Hub.query.startsWith("="))Hub.command({action:"calculate",text:Hub.query.slice(1).trim()});}
+                onAccept:l.accept()
+                onDismiss:{l.keyboardOpen=false;grid.forceActiveFocus();}
+            }
             RowLayout {Layout.fillWidth:true;visible:l.section==="apps"
                 MText {text:l.consoleMode ? (Hub.controller ? "Controller connected  ·  " : "Keyboard ready  ·  ")+"← ↑ ↓ → Navigate    A / Enter Play    B / Esc Back" : l.phone ? "Long-press for actions" : l.results.length+" apps  ·  Right-click for actions  ·  ↑↓←→ navigate  ·  Enter opens";color:Theme.muted;font.pixelSize:l.consoleMode ? 13 : 10;Layout.fillWidth:true}
                 MButton {visible:!l.phone;icon:"expand";compact:true;text:"Convergence";tooltip:"Adapt your workspace";onClicked:Hub.page="convergence"}

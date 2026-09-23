@@ -6,33 +6,66 @@ Item {
     property var output:null
     implicitHeight:Hub.prefs.phoneButtons ? 64 : 48
     function go(tab) {if(output)Hub.targetScreen=output;Hub.mobileTab=tab;Hub.page="launcher";}
-    function back() {if(Hub.page==="launcher"&&Hub.mobileTab!=="home")go("home");else Hub.close();}
-    Rectangle {anchors.fill:parent;color:Theme.alpha(Theme.base,.92)}
-    Rectangle {width:parent.width;height:1;color:Theme.outline}
+    // Home closes every Opal surface; the embedded home screen is then what remains.
+    function home() {if(output)Hub.targetScreen=output;Hub.query="";Hub.mobileTab="home";Hub.close();}
+    function back() {if(Hub.page==="settings"&&Hub.settingsSection!=="")Hub.settingsSection="";else if(Hub.controlDetail!==""&&(Hub.page==="controls"||Hub.page==="notifications"))Hub.controlDetail="";else if(Hub.page==="launcher"&&Hub.mobileTab!=="home")go("home");else Hub.close();}
+    // No bar background: the navigation floats over the wallpaper or app, like a modern phone.
+    Rectangle {anchors.fill:parent;color:Hub.page===""||Hub.page==="launcher" ? "transparent" : Theme.alpha(Theme.base,.6)}
+    // Three buttons: back triangle, home circle and recents square, drawn as outlines.
     RowLayout {
-        visible:!!Hub.prefs.phoneButtons;anchors.centerIn:parent;width:Math.min(parent.width-24,480);spacing:8
-        MButton {Layout.fillWidth:true;icon:"back";tooltip:"Back within Opal · does not send app keystrokes";onClicked:nav.back()}
-        MButton {Layout.fillWidth:true;icon:"home";tonal:Hub.page==="launcher"&&Hub.mobileTab==="home";tooltip:"Home · hold for apps";onClicked:nav.go("home");menuEntries:[{text:"All apps",icon:"apps",run:()=>nav.go("apps")},{text:"Search",icon:"search",run:()=>{nav.go("apps");}}]}
-        MButton {Layout.fillWidth:true;icon:"desktop";tonal:Hub.page==="launcher"&&Hub.mobileTab==="recent";tooltip:"Recent apps";onClicked:nav.go("recent")}
-        MButton {Layout.preferredWidth:48;icon:"keyboard";tooltip:"Show / hide system keyboard";filled:Hub.systemOskVisible;onClicked:Hub.systemOsk("toggle")}
-    }
-    RowLayout {
-        visible:!Hub.prefs.phoneButtons;anchors.centerIn:parent;width:Math.min(parent.width-24,480);spacing:12
-        MButton {icon:"back";compact:true;tooltip:"Back within Opal";onClicked:nav.back()}
-        Item {
-            Layout.fillWidth:true;Layout.preferredHeight:48
-            Column {anchors.centerIn:parent;spacing:5
-                Rectangle {anchors.horizontalCenter:parent.horizontalCenter;width:96;height:4;radius:2;color:gesture.pressed ? Theme.primary : Theme.subtext}
-                MText {text:"Home · slide for recents";font.pixelSize:10;color:Theme.muted}
-            }
-            MouseArea {id:gesture;anchors.fill:parent;property real startX:0;property bool held:false
-                onPressed:e=>{startX=e.x;held=false;}
-                onReleased:e=>{if(!held)nav.go(Math.abs(e.x-startX)>40 ? "recent" : "home");}
-                onPressAndHold:{held=true;nav.go("recent");}
-                onCanceled:held=true
-            }
+        visible:!!Hub.prefs.phoneButtons;anchors.centerIn:parent;width:Math.min(parent.width-48,300);spacing:0
+        NavKey {
+            tooltip:"Back";onActivated:nav.back()
+            Glyph {anchors.centerIn:parent;name:"play_arrow";rotation:180;font.pixelSize:26;color:Theme.text}
         }
-        MButton {icon:"keyboard";compact:true;implicitWidth:48;implicitHeight:48;tooltip:"Show / hide system keyboard";filled:Hub.systemOskVisible;onClicked:Hub.systemOsk("toggle")}
-        MButton {icon:"apps";compact:true;tooltip:"All apps";onClicked:nav.go("apps")}
+        NavKey {
+            tooltip:"Home · hold for apps";onActivated:nav.home();onHeld:nav.go("apps")
+            Rectangle {anchors.centerIn:parent;width:18;height:18;radius:9;color:"transparent";border.width:2.5;border.color:Theme.text}
+        }
+        NavKey {
+            tooltip:"Recent apps";onActivated:nav.go("recent")
+            Rectangle {anchors.centerIn:parent;width:16;height:16;radius:4;color:"transparent";border.width:2.5;border.color:Theme.text}
+        }
+    }
+    // Gesture pill: tap for home, swipe up for apps, hold for recents, swipe sideways for back.
+    Item {
+        visible:!Hub.prefs.phoneButtons;anchors.fill:parent
+        Rectangle {
+            id:pill
+            anchors.centerIn:parent
+            width:gesture.pressed ? 132 : 108;height:5;radius:2.5
+            color:gesture.pressed ? Theme.primary : Theme.alpha(Theme.text,.75)
+            transform:Translate {y:gesture.pressed ? Math.max(-14,Math.min(0,gesture.mouseY-gesture.startY)*.3) : 0}
+            Behavior on width {NumberAnimation {duration:Theme.motion(200);easing.type:Easing.OutBack}}
+            Behavior on color {ColorAnimation {duration:Theme.motion(120)}}
+        }
+        MouseArea {
+            id:gesture
+            anchors.horizontalCenter:parent.horizontalCenter;width:Math.min(parent.width,260);height:parent.height
+            property real startX:0
+            property real startY:0
+            property bool held:false
+            onPressed:e=>{startX=e.x;startY=e.y;held=false;}
+            onPressAndHold:{held=true;nav.go("recent");}
+            onCanceled:held=true
+            onReleased:e=>{
+                if(held)return;
+                const dx=e.x-startX,dy=startY-e.y;
+                if(Math.abs(dx)>50&&Math.abs(dx)>dy)nav.back();
+                else if(dy>28&&(Hub.page===""||Hub.page==="launcher"&&Hub.mobileTab==="home"))nav.go("apps");
+                else nav.home();
+            }
+            Accessible.role:Accessible.Button;Accessible.name:"Home. Swipe up for apps, hold for recent apps"
+        }
+    }
+    component NavKey: Item {
+        id:key
+        property string tooltip:""
+        signal activated()
+        signal held()
+        Layout.fillWidth:true;Layout.preferredHeight:48
+        Rectangle {anchors.centerIn:parent;width:56;height:40;radius:20;color:Theme.stateLayer;opacity:keyMouse.pressed ? .14 : 0;Behavior on opacity {NumberAnimation {duration:Theme.motion(120)}}}
+        MouseArea {id:keyMouse;anchors.fill:parent;onClicked:key.activated();onPressAndHold:key.held()}
+        Accessible.role:Accessible.Button;Accessible.name:tooltip;Accessible.onPressAction:activated()
     }
 }

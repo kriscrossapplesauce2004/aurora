@@ -17,16 +17,24 @@ Rectangle {
     Behavior on color {ColorAnimation {duration:140}}
     Behavior on radius {NumberAnimation {duration:160;easing.type:Easing.OutCubic}}
     Behavior on scale {NumberAnimation {duration:120}}
-    OpalMenu {id:entryMenu;entries:[
+    function showMenu(x,y) {
+        menuX=x;menuY=y;
+        if(entryMenu.item)entryMenu.item.popup(x,y);
+        else entryMenu.active=true;
+    }
+    property real menuX:0
+    property real menuY:0
+    Component {id:entryMenuComponent;OpalMenu {entries:[
         {text:"Copy this entry",icon:"copy",run:()=>Hub.copyClipboard(entry.record.id,entry.closeAfterCopy)},
         {text:"Remove from history",icon:"trash",run:()=>Hub.deleteClipboard(entry.record.id)}
-    ]}
+    ]}}
+    Loader {id:entryMenu;active:false;sourceComponent:entryMenuComponent;onLoaded:item.popup(entry.menuX,entry.menuY)}
     MouseArea {
         id:hit;anchors.fill:parent;hoverEnabled:true;acceptedButtons:Qt.LeftButton|Qt.RightButton;cursorShape:Qt.PointingHandCursor
         property bool held:false
         onPressed:held=false
-        onClicked:e=>{if(held)return;if(e.button===Qt.RightButton)entryMenu.popup(e.x,e.y);else Hub.copyClipboard(entry.record.id,entry.closeAfterCopy);}
-        onPressAndHold:e=>{held=true;entryMenu.popup(e.x,e.y);}
+        onClicked:e=>{if(held)return;if(e.button===Qt.RightButton)entry.showMenu(e.x,e.y);else Hub.copyClipboard(entry.record.id,entry.closeAfterCopy);}
+        onPressAndHold:e=>{held=true;entry.showMenu(e.x,e.y);}
     }
     RowLayout {
         anchors {fill:parent;margins:entry.compact ? 10 : 14}

@@ -7,9 +7,47 @@ import Quickshell.Wayland
 Scope {
     id: h
     property var prefs: ({mode:"desktop", palette:0, light:false, glass:0.78, favorites:[], recent:[], wallpaper:0, wallpaperPath:"", wallpaperFit:"crop", wallpaperDim:.15, desktopWidgets:true, dynamicColors:false, dynamicPalette:{}, colorScheme:"scheme-tonal-spot"})
-    property var status: ({workspace:1, workspaces:[], windows:[], title:"Your desktop", volume:0, muted:false, network:"Connecting…", wifi:false, bluetooth:false, track:"", artist:"", art:"", playing:false, battery:-1, charging:false, brightness:-1, cpu:0, memory:0, uptime:"", profile:"", hypr:false})
+    property var status: ({workspace:1, workspaces:[], windows:[], title:"Your desktop", volume:0, muted:false, network:"Connecting…", wifi:false, bluetooth:false, track:"", artist:"", art:"", playing:false, battery:-1, batteries:[], charging:false, brightness:-1, cpu:0, memory:0, uptime:"", profile:"", governor:"", hypr:false})
     property var connectivity: ({wifi:{items:[],busy:false,error:"",powered:false},bluetooth:{items:[],busy:false,error:"",powered:false}})
     property string controlDetail: ""
+    property string settingsSection: ""
+    function openSettings(section) { settingsSection=section||"";page="settings"; }
+    property bool taskbarContextOpen:false
+    property var taskbarContextScreen:null
+    property real taskbarContextX:0
+    property real taskbarContextY:0
+    property bool taskbarContextCentered:false
+    property var taskbarContextEntries:[]
+    property int taskbarContextRequest:0
+    property string taskbarContextTitle:"Taskbar"
+    property string taskbarContextIcon:"desktop"
+    function openTaskbarContext(screen, x, y, entries, centered, title, icon) {
+        taskbarContextScreen=screen||chooseScreen();
+        taskbarContextX=x;
+        taskbarContextY=y;
+        taskbarContextCentered=!!centered;
+        taskbarContextEntries=(entries||taskbarMenu()).slice();
+        taskbarContextTitle=title||"Taskbar";
+        taskbarContextIcon=icon||"desktop";
+        taskbarContextOpen=true;
+        taskbarContextRequest++;
+    }
+    function closeTaskbarContext() {taskbarContextOpen=false;}
+    property bool powerProfileOpen:false
+    property var powerProfileScreen:null
+    property real powerProfileX:0
+    property real powerProfileY:0
+    function openPowerProfile(screen,x,y) {
+        powerProfileScreen=screen||chooseScreen();
+        powerProfileX=x;
+        powerProfileY=y;
+        powerProfileOpen=true;
+    }
+    function closePowerProfile() {powerProfileOpen=false;}
+    function togglePowerProfile(screen,x,y) {
+        if(powerProfileOpen&&powerProfileScreen===screen)closePowerProfile();
+        else openPowerProfile(screen,x,y);
+    }
     function connection(kind,verb,extra) { command(Object.assign({action:"connectivity",kind:kind,verb:verb},extra||{})); }
     property bool audioOpen:false
     property var audioScreen:null
@@ -17,9 +55,10 @@ Scope {
     function openAudio(screen) {audioScreen=screen||chooseScreen();controlDetail="";page="";audioOpen=true;}
     function closeAudio() {audioOpen=false;}
     function toggleAudio(screen) {if(audioOpen)closeAudio();else openAudio(screen);}
-    function audioScroll(steps,screen) {openAudio(screen);volume(Math.max(0,Math.min(100,status.volume+steps*2)));}
+    // Wheel input changes the volume but does not open the drawer.
+    function audioScroll(steps,screen) {osdScreen=screen||chooseScreen();volume(Math.max(0,Math.min(100,status.volume+steps*2)));}
     property string page: ""
-    onPageChanged:if(page!=="")closeAudio()
+    onPageChanged:if(page!=="") {closeAudio();closePowerProfile();}
     property string category: "All apps"
     property string query: ""
     property string calculation: ""
@@ -72,6 +111,13 @@ Scope {
     }
     property string toast: ""
     property string osd: ""
+    property var osdScreen:null
+    property bool osdHovered:false
+    function showVolumeOsd() {
+        if(!osdScreen)osdScreen=chooseScreen();
+        osd=status.muted ? "Muted" : "Volume";
+        osdTimer.restart();
+    }
     property int focusSeconds: 25*60
     property bool focusRunning: false
     property bool preferencesLoaded: false
@@ -99,11 +145,17 @@ Scope {
         hay:(String(a.name||"")+" "+String(a.genericName||"")+" "+(a.keywords||[]).join(" ")).toLowerCase(),
         categories:(a.categories||[]).join(" ").toLowerCase()
     }))
+    readonly property var searchCategories: ({Games:["game"], Create:["graphics","audiovideo","audio","video"], Work:["office","development","education"], System:["system","settings","utility"], Internet:["network"]})
     property var favoriteApps: {
         let ids = prefs.favorites;
         if (prefs.pinsConfigured || ids.length) return ids.map(id => appIndex[String(id).toLowerCase()]).filter(Boolean);
         const choices = ["firefox", "google-chrome", "chromium", "kitty", "org.kde.dolphin", "org.gnome.Nautilus", "steam", "code", "org.kde.kate"];
         return choices.map(id => appIndex[id.toLowerCase()]).filter(Boolean).slice(0,6);
+    }
+    readonly property var favoriteSearchIndex: {
+        const ids=Object.create(null);
+        favoriteApps.forEach(app => ids[app.id]=true);
+        return appSearchIndex.filter(record => ids[record.app.id]);
     }
     property var dockScreen: null
     property bool dockNotice: false
@@ -144,6 +196,9 @@ Scope {
     }
     property string launcherSection: "apps"
     property string mobileTab: "home"
+    // Phone drawer handoff: the embedded home passes drag progress to the overlay, and asks for search focus.
+    property real drawerHandoff: 0
+    property bool drawerSearch: false
     // Resource telemetry changes frequently; compositor topology does not. Keep
     // the latter on its own properties so every CPU tick does not rebuild the
     // taskbar's complete window grouping model.
@@ -167,7 +222,9 @@ Scope {
             group.windows.push(w);
         });
         const order=prefs.taskbarOrder||[];
-        return groups.sort((a,b)=>{const ai=order.indexOf(a.key),bi=order.indexOf(b.key);return (ai<0 ? order.length : ai)-(bi<0 ? order.length : bi);});
+        const ranks=Object.create(null);
+        order.forEach((key,index)=>{if(ranks[key]===undefined)ranks[key]=index;});
+        return groups.sort((a,b)=>{const ai=ranks[a.key],bi=ranks[b.key];return (ai===undefined ? order.length : ai)-(bi===undefined ? order.length : bi);});
     }
     function reorderTask(key,index) {
         let order=taskGroups.map(g=>g.key);const from=order.indexOf(key);
@@ -185,7 +242,22 @@ Scope {
     function set(key,value) { let p = Object.assign({},prefs); p[key]=value; prefs=p; command({action:"preference",key:key,value:value}); }
     function toggle(p) { page = page === p ? "" : p; if(page === "launcher") query = ""; }
     function mode(m) { if(m==="phone") {const screen=targetScreen||chooseScreen();if(screen)set("phoneDisplay",screen.name);} set("mode",m); page=""; query=""; mobileTab="home"; launcherSection="apps"; category=m==="console" ? "Games" : "All apps"; }
-    function close() { page="";closeAudio(); }
+    function close() { page="";closeAudio();closePowerProfile(); }
+    property int startSearchRequest:0
+    // Search surface that grows from the shelf pill. It is separate from Start.
+    function openSearch() { if(page==="search"){close();return;} query="";calculation="";page="search";startSearchRequest++; }
+    // Calculator input: an explicit "=" prefix, or a bare arithmetic expression.
+    function calcExpression(text) {
+        const q=String(text||"").trim();
+        const body=q.startsWith("=") ? q.slice(1).trim() : q;
+        return body.replace(/[×x]/g,"*").replace(/÷/g,"/");
+    }
+    function looksLikeMath(text) { const q=String(text||"").trim(); return /^[\d\s.+\-*/%()^×x÷]+$/.test(q)&&/\d/.test(q)&&/[+\-*/%^×x÷]/.test(q.replace(/^-/,"")); }
+    function openStart(searchOnly) {
+        launcherSection="apps";
+        if(page==="launcher"&&!searchOnly){close();return;}
+        query="";page="launcher";startSearchRequest++;
+    }
     function launch(app) {
         if(!app)return;
         const running=windows.filter(w=>appForWindow(w)===app);
@@ -194,9 +266,20 @@ Scope {
     }
     function launchNew(app) {if(!app)return;command({action:"recent",id:app.id});app.execute();page="";}
     function pinned(app) { return prefs.favorites.indexOf(app.id)>=0; }
+    function glyphForApp(app) {
+        const words=app ? ((app.id||"")+" "+(app.name||"")+" "+(app.categories||[]).join(" ")).toLowerCase() : "";
+        if(/firefox|chrom|browser|network/.test(words))return "web";
+        if(/file|dolphin|nautilus/.test(words))return "folder";
+        if(/terminal|kitty|konsole|development|code/.test(words))return "terminal";
+        if(/music|audio|video/.test(words))return "music";
+        if(/note|office|text/.test(words))return "clipboard";
+        if(/game|steam/.test(words))return "game";
+        if(/setting|system/.test(words))return "settings";
+        return "apps";
+    }
     function pin(app) { command({action:"pin",id:app.id,initial:favoriteApps.map(a=>a.id)}); }
     function settings(which) { if(which==="network"||which==="bluetooth") {controlDetail=which==="network" ? "wifi" : which;page="controls";return;} page=""; command({action:"settings",which:which}); }
-    function volume(value) { command({action:"volume",value:value}); let s=Object.assign({},status); s.volume=Math.round(value); status=s; }
+    function volume(value) { value=Math.max(0,Math.min(100,Math.round(value)));command({action:"volume",value:value}); let s=Object.assign({},status); s.volume=value; status=s;showVolumeOsd(); }
     function workspace(n) { if(status.hypr)command({action:"workspace",number:Number(n)}); }
     property var pendingFocus:null
     function focusWindow(w) {
@@ -238,33 +321,37 @@ Scope {
         let index=g.windows.findIndex(w=>active(w));
         focusWindow(g.windows[(index+1)%g.windows.length]);
     }
+    // Menu entries: quick entries become large buttons, chip entries share a labelled row, checked entries show a switch.
     function appMenu(app) {
         if(!app)return [];
         const matching=windows.filter(w=>appForWindow(w)===app);
-        let entries=[{text:"Open new instance",icon:"add",run:()=>launchNew(app)},
-                     {text:pinned(app) ? "Unpin from taskbar" : "Pin to taskbar",icon:"pin",run:()=>pin(app)}];
-        (app.actions||[]).forEach(a=>entries.push({text:a.name,icon:"next",run:()=>{a.execute();close();}}));
-        matching.forEach(w=>entries.push({text:"Switch to "+w.title,icon:"desktop",run:()=>focusWindow(w)}));
-        if(matching.length) entries.push({text:"Close "+matching.length+" window"+(matching.length===1 ? "" : "s"),icon:"close",run:()=>matching.forEach(w=>closeWindow(w))});
+        let entries=[{text:matching.length ? "New window" : "Open",icon:"add",quick:true,run:()=>launchNew(app)},
+                     {text:pinned(app) ? "Unpin" : "Pin",icon:pinned(app) ? "keep_off" : "keep",quick:true,run:()=>pin(app)}];
+        if(matching.length) entries.push({text:matching.length===1 ? "Close" : "Close all",icon:"close",quick:true,danger:true,run:()=>matching.forEach(w=>closeWindow(w))});
+        (app.actions||[]).forEach(a=>entries.push({text:a.name,icon:"bolt",run:()=>{a.execute();close();}}));
+        matching.forEach(w=>entries.push({text:w.title||app.name,detail:w.workspace ? "Workspace "+w.workspace : "",icon:"desktop",run:()=>focusWindow(w)}));
         return entries;
     }
     function windowMenu(w) {
-        let entries=[{text:"Switch to window",icon:"desktop",run:()=>focusWindow(w)}];
+        let entries=[];
         if(w.handle) {
-            entries.push({text:w.handle.maximized ? "Restore size" : "Maximize",icon:"expand",run:()=>w.handle.maximized=!w.handle.maximized});
-            entries.push({text:"Minimize",icon:"sleep",run:()=>w.handle.minimized=true});
+            entries.push({text:w.handle.maximized ? "Restore" : "Maximize",icon:w.handle.maximized ? "close_fullscreen" : "open_in_full",quick:true,run:()=>w.handle.maximized=!w.handle.maximized});
+            entries.push({text:"Minimize",icon:"minimize",quick:true,run:()=>w.handle.minimized=true});
         }
-        if(status.hypr) status.workspaces.filter(n=>n!==w.workspace).forEach(n=>entries.push({text:"Move to workspace "+n,icon:"next",run:()=>Quickshell.execDetached(["hyprctl","dispatch","movetoworkspacesilent",n+",address:"+w.address])}));
-        entries.push({text:"Close window",icon:"close",run:()=>closeWindow(w)});
+        entries.push({text:"Close",icon:"close",quick:true,danger:true,run:()=>closeWindow(w)});
+        entries.push({text:"Switch to window",icon:"desktop",run:()=>focusWindow(w)});
+        if(status.hypr) status.workspaces.filter(n=>n!==w.workspace).sort((a,b)=>a-b).forEach(n=>entries.push({text:String(n),chip:true,group:"Move to workspace",run:()=>command({action:"move-window",address:w.address,number:Number(n),follow:false})}));
         return entries;
     }
     function taskbarMenu() {
-        return [{text:"All applications",icon:"apps",run:()=>openSection("apps")},
-                {text:"Running windows",icon:"desktop",run:()=>openSection("windows")},
-                {text:prefs.taskbarAutoHide ? "Keep taskbar visible" : "Auto-hide taskbar",icon:"expand",run:()=>set("taskbarAutoHide",!prefs.taskbarAutoHide)},
-                {text:prefs.taskbarLabels===false ? "Show app names" : "Icons only",icon:"list",run:()=>set("taskbarLabels",prefs.taskbarLabels===false)},
-                {text:"Convergence",icon:"expand",run:()=>page="convergence"},
-                {text:"Personalize",icon:"palette",run:()=>page="appearance"}];
+        return [{text:"Apps",icon:"apps",quick:true,run:()=>openSection("apps")},
+                {text:"Windows",icon:"desktop",quick:true,run:()=>openSection("windows")},
+                {text:"Settings",icon:"settings",quick:true,run:()=>openSettings("taskbar")},
+                {text:"Hide automatically",icon:"vertical_align_bottom",checked:!!prefs.taskbarAutoHide,run:()=>set("taskbarAutoHide",!prefs.taskbarAutoHide)},
+                {text:"Center apps",icon:"format_align_center",checked:!!prefs.taskbarCenter,run:()=>set("taskbarCenter",!prefs.taskbarCenter)},
+                {text:"Window labels",icon:"label",checked:!!prefs.taskbarLabels,run:()=>set("taskbarLabels",!prefs.taskbarLabels)},
+                {text:"Displays & convergence",icon:"convergence",run:()=>page="convergence"},
+                {text:"Wallpaper & style",icon:"palette",run:()=>page="appearance"}];
     }
     function message(s) { toast=s; toastTimer.restart(); }
     function screenShot() { close(); command({action:"screenshot"}); }
@@ -281,25 +368,30 @@ Scope {
     function timerToggle() { if(focusSeconds<=0) focusSeconds=25*60; focusRunning=!focusRunning; }
     function searchApps(text,cat) {
         const q=text.toLowerCase().trim();
-        const categories = {Games:["game"], Create:["graphics","audiovideo","audio","video"], Work:["office","development","education"], System:["system","settings","utility"], Internet:["network"]};
-
-        const source = cat === "Pinned" ? favoriteApps.map(a => ({app:a,name:String(a.name||"").toLowerCase(),hay:(String(a.name||"")+" "+String(a.genericName||"")+" "+(a.keywords||[]).join(" ")).toLowerCase(),categories:(a.categories||[]).join(" ").toLowerCase()})) : appSearchIndex;
-        const category=categories[cat];
-        return source.map(record => {
+        const source=cat==="Pinned" ? favoriteSearchIndex : appSearchIndex;
+        const category=searchCategories[cat];
+        const matches=[];
+        for(let index=0;index<source.length;index++) {
+            const record=source[index];
             const a=record.app;
             const name=record.name;
-            if(category && !category.some(token => record.categories.indexOf(token)>=0)) return null;
+            if(category) {
+                let inCategory=false;
+                for(let tokenIndex=0;tokenIndex<category.length;tokenIndex++)if(record.categories.indexOf(category[tokenIndex])>=0){inCategory=true;break;}
+                if(!inCategory)continue;
+            }
             let score=0;
             if(q) {
                 if(name===q) score=1000;
                 else if(name.startsWith(q)) score=800;
                 else if(name.indexOf(q)>=0) score=600;
                 else if(record.hay.indexOf(q)>=0) score=400;
-                else { let j=0; for(let i=0;i<name.length && j<q.length;i++) if(name[i]===q[j]) j++; if(j===q.length) score=100-name.length; else return null; }
+                else { let j=0; for(let i=0;i<name.length && j<q.length;i++) if(name[i]===q[j]) j++; if(j===q.length) score=100-name.length; else continue; }
             }
-            return {app:a,score:score}
-
-        }).filter(Boolean).sort((a,b)=>b.score-a.score||a.app.name.localeCompare(b.app.name)).map(x=>x.app);
+            matches.push({app:a,score:score});
+        }
+        matches.sort((a,b)=>b.score-a.score||a.app.name.localeCompare(b.app.name));
+        return matches.map(match => match.app);
     }
     SystemClock { id: clock; precision: SystemClock.Seconds }
     Process {
@@ -312,7 +404,7 @@ Scope {
                 try {
                     const e=JSON.parse(line);
                     if(e.event === "status") {
-                        if (h.preferencesLoaded && (e.data.volume !== h.status.volume || e.data.muted !== h.status.muted)) { h.osd=e.data.muted ? "Volume muted" : "Volume  " + e.data.volume + "%"; osdTimer.restart(); }
+                        if (h.preferencesLoaded && (e.data.volume !== h.status.volume || e.data.muted !== h.status.muted)) { h.osdScreen=h.chooseScreen();h.showVolumeOsd(); }
                         h.status=Object.assign({},h.status,e.data);
                     } else if(e.event === "compositor") {
                         if (e.data.hypr !== undefined) h.compositorActive=!!e.data.hypr;
@@ -335,7 +427,7 @@ Scope {
                     else if(e.event === "systemOsk") {h.systemOskAvailable=!!e.available;h.systemOskRunning=!!e.running;h.systemOskVisible=!!e.visible;h.systemOskDetail=e.detail||"";}
                     else if(e.event === "libraryArt") h.gameArt=e.data;
                     else if(e.event === "navigation" && h.prefs.mode === "console") { if(e.key==="home") h.toggle("launcher"); else if(h.page!=="") h.navigate(e.key); }
-                    else if(e.event === "calculation" && e.query===h.query.slice(1).trim()) h.calculation=e.result;
+                    else if(e.event === "calculation" && e.query===h.calcExpression(h.query)) h.calculation=e.result;
                     else if(e.event === "clipboard") {
                         h.clipboardItems=e.items||[];h.clipboardPaused=!!e.paused;
                         h.clipboardAvailable=!!e.available;h.clipboardDetail=e.detail||"";
@@ -352,6 +444,6 @@ Scope {
         onExited: (code,status) => { h.message("System bridge stopped. Restart Opal to reconnect."); }
     }
     Timer { id: toastTimer; interval: 4500; onTriggered: h.toast="" }
-    Timer { id: osdTimer; interval: 1800; onTriggered: h.osd="" }
+    Timer { id: osdTimer; interval: 1800; onTriggered: {if(h.osdHovered)restart();else h.osd="";} }
     Timer { interval:1000; running:h.focusRunning; repeat:true; onTriggered: { h.focusSeconds--; if(h.focusSeconds<=0) { h.focusRunning=false; h.message("Focus complete. Time to take a breath."); Quickshell.execDetached(["notify-send","-a","Opal","Focus complete","Time to take a break."]); } } }
 }

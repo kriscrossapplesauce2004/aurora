@@ -96,10 +96,10 @@ Scope {
     }
     Timer {
         interval: 100; repeat: true; running: service.popups.length > 0 && Hub.page === ""
-        onTriggered: service.popups.slice().forEach(e => {
-            if (e.hovered || e.remaining < 0) return;
-            e.remaining -= interval;
-            if (e.remaining <= 0) service.hidePopup(e);
+        onTriggered: service.popups.forEach(entry => {
+            if (entry.hovered || entry.remaining < 0) return;
+            entry.remaining -= interval;
+            if (entry.remaining <= 0) service.hidePopup(entry);
         })
     }
 }

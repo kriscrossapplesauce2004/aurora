@@ -1,8 +1,10 @@
 """Local wallpaper validation and shell-only Matugen colors (no template hooks)."""
 import json
+import os
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 from collections import deque
@@ -12,6 +14,7 @@ ROLES = ('primary', 'on_primary', 'primary_container', 'on_primary_container',
          'secondary', 'tertiary', 'background', 'on_surface', 'on_surface_variant',
          'surface_container', 'surface_container_high', 'outline_variant')
 SCHEMES = ('scheme-tonal-spot', 'scheme-expressive', 'scheme-vibrant', 'scheme-neutral')
+IMAGE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.webp', '.bmp')
 DEFAULTS = dict(wallpaperPath='', wallpaperFit='crop', wallpaperDim=0.15,
                 desktopWidgets=True, dynamicColors=False, dynamicPalette={},
                 colorScheme='scheme-tonal-spot')
@@ -25,11 +28,17 @@ def local_image(value):
             raise ValueError('Only local wallpapers are supported.')
         value = unquote(url.path)
     path = pathlib.Path(value).expanduser()
-    if not path.is_absolute() or not path.is_file():
+    if not path.is_absolute():
         raise ValueError('Wallpaper must be an existing absolute path (or ~/path).')
-    if path.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp', '.bmp'):
+    try:
+        metadata = path.stat()
+    except OSError:
+        raise ValueError('Wallpaper must be an existing absolute path (or ~/path).') from None
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError('Wallpaper must be an existing absolute path (or ~/path).')
+    if path.suffix.lower() not in IMAGE_SUFFIXES:
         raise ValueError('Choose a PNG, JPEG, WebP or BMP image.')
-    if path.stat().st_size > 64 * 1024 * 1024:
+    if metadata.st_size > 64 * 1024 * 1024:
         raise ValueError('Choose an image smaller than 64 MiB.')
     return path.resolve()
 
@@ -58,22 +67,23 @@ def image_library(folder='', current='', home=None):
     while queue and len(result) < 120 and scanned < 3000:
         directory, depth = queue.popleft()
         try:
-            for p in directory.iterdir():
-                scanned += 1
-                if scanned > 3000 or len(result) >= 120: break
-                if p.name.startswith('.') or p.is_symlink(): continue
-                if p.is_dir():
-                    if depth < 3: queue.append((p, depth+1))
-                    continue
-                if p.suffix.lower() not in ('.png','.jpg','.jpeg','.webp','.bmp'): continue
-                try: p = local_image(str(p))
-                except (ValueError, OSError): continue
-                if p not in seen:
-                    seen.add(p)
-                    name=p.stem
-                    if p.parent.name in ('images','images_dark') and p.parent.parent.name=='contents':
-                        name=p.parents[2].name+(' · dark' if p.parent.name=='images_dark' else '')+' · '+p.stem
-                    result.append({'path':p.as_uri(), 'name':name})
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    scanned += 1
+                    if scanned > 3000 or len(result) >= 120: break
+                    if entry.name.startswith('.') or entry.is_symlink(): continue
+                    if entry.is_dir(follow_symlinks=False):
+                        if depth < 3: queue.append((pathlib.Path(entry.path), depth+1))
+                        continue
+                    if not entry.name.lower().endswith(IMAGE_SUFFIXES): continue
+                    try: p = local_image(entry.path)
+                    except (ValueError, OSError): continue
+                    if p not in seen:
+                        seen.add(p)
+                        name=p.stem
+                        if p.parent.name in ('images','images_dark') and p.parent.parent.name=='contents':
+                            name=p.parents[2].name+(' · dark' if p.parent.name=='images_dark' else '')+' · '+p.stem
+                        result.append({'path':p.as_uri(), 'name':name})
         except OSError: continue
     return sorted(result, key=lambda item:item['name'].casefold())
 
@@ -95,16 +105,18 @@ def browse_images(value='', home=None):
     root=root.resolve()
     folders,images=[],[]
     try:
-        for count,p in enumerate(root.iterdir()):
-            if count>=3000:break
-            if p.name.startswith('.') or p.is_symlink():continue
-            try:
-                if p.is_dir():
-                    if len(folders)<200:folders.append({'path':p.as_uri(),'name':p.name,'directory':True})
-                elif len(images)<120:
-                    image=local_image(str(p))
-                    images.append({'path':image.as_uri(),'name':image.stem,'directory':False})
-            except (ValueError,OSError):continue
+        with os.scandir(root) as entries:
+            for count,entry in enumerate(entries):
+                if count>=3000:break
+                if entry.name.startswith('.') or entry.is_symlink():continue
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        p=pathlib.Path(entry.path)
+                        if len(folders)<200:folders.append({'path':p.as_uri(),'name':p.name,'directory':True})
+                    elif len(images)<120 and entry.name.lower().endswith(IMAGE_SUFFIXES):
+                        image=local_image(entry.path)
+                        images.append({'path':image.as_uri(),'name':image.stem,'directory':False})
+                except (ValueError,OSError):continue
     except OSError as error:
         raise ValueError('Cannot read this folder.') from error
     return {'folder':root.as_uri(),'parent':root.parent.as_uri() if root.parent!=root else '',

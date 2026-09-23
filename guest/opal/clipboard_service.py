@@ -13,6 +13,7 @@ import uuid
 
 MAX_BYTES = 32768
 MAX_ITEMS = 20
+LINK_PATTERN = re.compile(r'https?://\S+\Z')
 
 
 def capture():
@@ -38,6 +39,8 @@ class ClipboardHistory:
     def __init__(self, emit):
         self.emit = emit
         self.items = []
+        self._by_text = {}
+        self._by_id = {}
         self.paused = False
         self.available = False
         self.detail = 'Waiting for clipboard service'
@@ -48,45 +51,60 @@ class ClipboardHistory:
 
     def publish(self):
         with self.lock:
-            self.emit({'event': 'clipboard', 'items': [dict(i) for i in self.items],
+            self.emit({'event': 'clipboard', 'items': [i.copy() for i in self.items],
                        'paused': self.paused, 'available': self.available,
                        'detail': self.detail, 'limit': MAX_ITEMS})
 
     def add(self, text, sensitive=False):
-        if not isinstance(text, str) or sensitive or not text.strip() or '\0' in text:
+        if not isinstance(text, str) or sensitive or '\0' in text:
             return False
-        if len(text.encode('utf-8')) > MAX_BYTES:
+        stripped = text.strip()
+        if not stripped:
+            return False
+        encoded = text.encode('utf-8')
+        if len(encoded) > MAX_BYTES:
             return False
         with self.lock:
             if self.paused:
                 return False
-            existing = next((i for i in self.items if i['text'] == text), None)
+            existing = self._by_text.get(text)
             if existing is not None:
                 self.items.remove(existing)
+                del self._by_id[existing['id']]
             entry = {'id': existing['id'] if existing else uuid.uuid4().hex,
                      'text': text, 'chars': len(text), 'lines': text.count('\n') + 1,
-                     'kind': 'Link' if re.fullmatch(r'https?://\S+', text.strip()) else
+                     'kind': 'Link' if LINK_PATTERN.fullmatch(stripped) else
                              'Snippet' if '\n' in text else 'Text',
                      'captured': int(time.time() * 1000)}
             self.items.insert(0, entry)
-            del self.items[MAX_ITEMS:]
+            self._by_text[text] = entry
+            self._by_id[entry['id']] = entry
+            while len(self.items) > MAX_ITEMS:
+                removed = self.items.pop()
+                del self._by_text[removed['text']]
+                del self._by_id[removed['id']]
             self.publish()
         return True
 
     def delete(self, identity):
         with self.lock:
-            self.items = [i for i in self.items if i['id'] != identity]
+            entry = self._by_id.pop(identity, None)
+            if entry is not None:
+                self.items.remove(entry)
+                del self._by_text[entry['text']]
             self.publish()
 
     def clear(self):
         # Only this process's history. Never clear the system clipboard or other managers.
         with self.lock:
             self.items.clear()
+            self._by_text.clear()
+            self._by_id.clear()
             self.publish()
 
     def copy(self, identity):
         with self.lock:
-            entry = next((i for i in self.items if i['id'] == identity), None)
+            entry = self._by_id.get(identity)
             text = entry['text'] if entry else None
         success = False
         if text is not None and shutil.which('wl-copy'):

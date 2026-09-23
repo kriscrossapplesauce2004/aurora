@@ -12,6 +12,7 @@ Item {
     property bool menuOpen:false
     property int menuIndex:0
     property int selection:0
+    onQueryChanged:if(search.text!==query)search.text=query
     readonly property int columns:Math.max(2,Math.min(6,Math.floor((width-64)/260)))
     readonly property var tabs:["Continue","Games","Pinned","All apps"]
     readonly property var continueApps: {
@@ -87,8 +88,8 @@ map[Qt.Key_Left]="left";map[Qt.Key_Right]="right";map[Qt.Key_Up]="up";map[Qt.Key
         else if(e.key===Qt.Key_Tab){c.navigate(e.modifiers&Qt.ShiftModifier ? "previousTab" : "nextTab");e.accepted=true;}
         else if(e.key===Qt.Key_F2){c.navigate("pin");e.accepted=true;}
         else if(e.key===Qt.Key_F3){c.searchToggle();e.accepted=true;}
-        else if(c.searching&&e.key===Qt.Key_Backspace){c.query=c.query.slice(0,-1);e.accepted=true;}
-        else if(c.searching&&e.text&&!(e.modifiers&(Qt.ControlModifier|Qt.AltModifier|Qt.MetaModifier))){c.query+=e.text;e.accepted=true;}
+        else if(c.searching&&e.key===Qt.Key_Backspace){keyboard.eraseFromTarget();c.query=search.text;e.accepted=true;}
+        else if(c.searching&&e.text&&!(e.modifiers&(Qt.ControlModifier|Qt.AltModifier|Qt.MetaModifier))){keyboard.insertIntoTarget(e.text);c.query=search.text;e.accepted=true;}
     }
     Component.onCompleted:if(!embedded)forceActiveFocus()
     ColumnLayout {
@@ -160,7 +161,7 @@ fill:Theme.alpha(Theme.primary,.22);lobes:8;rotation:12}
         TextField {
             id:search;visible:c.searching||c.query!==""
             Layout.fillWidth:true;Layout.preferredHeight:56;leftPadding:22;rightPadding:22
-            text:c.query;onTextEdited:c.query=text
+            onTextEdited:c.query=text
             color:Theme.text;placeholderTextColor:Theme.muted;font.family:Theme.font;font.pixelSize:19
             placeholderText:"Search your installed apps and games"
             background:Rectangle {radius:28;color:Theme.surfaceHigh}
@@ -192,9 +193,10 @@ fill:Theme.alpha(Theme.primary,.22);lobes:8;rotation:12}
             }
             Item {Layout.fillHeight:true}
         }
-        SearchKeyboard {id:keyboard;visible:c.searching;Layout.fillWidth:true;Layout.preferredHeight:Math.min(320,c.height*.38);controllerMode:true
-            onInsert:text=>c.query+=text
-            onErase:c.query=c.query.slice(0,-1)
+        SearchKeyboard {id:keyboard;visible:c.searching;Layout.fillWidth:true;Layout.preferredHeight:Math.min(implicitHeight,c.height*.40);controllerMode:true
+            inputTarget:search;contextLabel:"Search library";returnLabel:"Done"
+            onInsert:c.query=search.text
+            onErase:c.query=search.text
             onAccept:{c.searching=false;c.forceActiveFocus();}
             onDismiss:{c.searching=false;c.forceActiveFocus();}
         }

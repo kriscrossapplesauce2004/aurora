@@ -33,10 +33,14 @@ if phone_displays then
     end
     phone_displays:close()
 end
-hl.layer_rule({ match = { namespace = "^opal-(bar|shelf|overlay|toast)$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
+hl.layer_rule({ match = { namespace = "^opal-(bar|shelf|overlay|toast|volume-osd)$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
 -- New shade/audio cards blur only their own small surfaces; click-away layers
 -- are transparent input surfaces, never fullscreen blur regions.
 hl.layer_rule({ match = { namespace = "^opal-(audio|shade)$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
+-- The taskbar menu is a full-screen input host with one painted card.
+-- ignore_alpha keeps blur confined to that translucent card.
+hl.layer_rule({ match = { namespace = "^opal-taskbar-menu$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
+hl.layer_rule({ match = { namespace = "^opal-power-profile$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
 hl.layer_rule({ match = { namespace = "^opal-(audio|shade)-dismiss$" }, blur = false, no_anim = true })
 local function bind(key, command)
     hl.unbind(key)

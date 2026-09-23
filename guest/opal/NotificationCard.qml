@@ -13,10 +13,11 @@ Surface {
     readonly property bool critical: notice && notice.urgency === NotificationUrgency.Critical
     readonly property var actions: notice ? notice.actions : []
     implicitHeight: content.implicitHeight + 28
-    radius: 18
+    radius: 24
     translucency: popup ? Math.max(.68, Hub.prefs.glass) : .42
     elevated: !popup
-    border.color: critical ? Theme.alpha(Theme.primary,.65) : Theme.outline
+    border.color: critical ? Theme.alpha(Theme.error,.7) : Theme.glassEdge
+    border.width: critical ? 2 : 1
     HoverHandler { id: hover; onHoveredChanged: if (card.entry) card.entry.hovered = hovered }
     Component.onDestruction: if (entry) entry.hovered = false
     ColumnLayout {
@@ -26,21 +27,21 @@ Surface {
         RowLayout {
             Layout.fillWidth: true; spacing: 8
             Rectangle {
-                width: 28; height: 28; radius: 9; color: Theme.alpha(Theme.primary,.12)
+                width: 32; height: 32; radius: 16; color: card.critical ? Theme.alpha(Theme.error,.18) : Theme.primaryContainer
                 Image {
                     id: appIcon; anchors.centerIn: parent; width: 18; height: 18
                     source: card.notice && card.notice.appIcon ? (card.notice.appIcon.startsWith("/") || card.notice.appIcon.startsWith("file:") || card.notice.appIcon.startsWith("image:") ? card.notice.appIcon : Quickshell.iconPath(card.notice.appIcon, true)) : ""
                     sourceSize.width: 24; sourceSize.height: 24
                     visible: status === Image.Ready
                 }
-                Glyph { anchors.centerIn: parent; visible: !appIcon.visible; name: "bell"; font.pixelSize: 15; color: Theme.primary }
+                Glyph { anchors.centerIn: parent; visible: !appIcon.visible; name: card.critical ? "priority_high" : "bell"; font.pixelSize: 17; color: card.critical ? Theme.error : Theme.onContainer }
             }
             MText { text: card.notice ? card.notice.appName || "Application" : ""; textFormat: Text.PlainText; Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: 12; font.weight: Font.DemiBold }
             Rectangle { visible: card.entry && !card.entry.read && !card.popup; width: 6; height: 6; radius: 3; color: Theme.primary }
             MText { text: card.entry ? Notifier.age(card.entry.received) : ""; font.pixelSize: 11; color: Theme.muted }
             MButton { icon: "close"; compact: true; implicitWidth: 28; implicitHeight: 28; tooltip: "Dismiss notification"; onClicked: Notifier.dismiss(card.entry) }
         }
-        MText { visible: card.critical; text: "IMPORTANT"; font.pixelSize: 10; font.letterSpacing: 1; font.weight: Font.DemiBold; color: Theme.primary }
+        MText { visible: card.critical; text: "IMPORTANT"; font.pixelSize: 10; font.letterSpacing: 1; font.weight: Font.DemiBold; color: Theme.error }
         MText {
             id: summaryText; Layout.fillWidth: true; text: card.notice ? card.notice.summary : ""
             textFormat: Text.PlainText; wrapMode: Text.Wrap; maximumLineCount: card.expanded ? 50 : 2

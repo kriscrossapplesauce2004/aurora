@@ -5,7 +5,10 @@ import Quickshell
 Item {
     id:s
     property bool labels:true
-    property bool contextOpen:false
+    property bool islandStyle:false
+    property var output:null
+    property real panelHeight:0
+    readonly property bool contextOpen:Hub.taskbarContextOpen&&Hub.taskbarContextScreen===s.output
     property bool hovered:false
     property string draggingKey:""
     property int sourceIndex:-1
@@ -13,6 +16,9 @@ Item {
     property real dragWidth:0
     property var dragItem:null
     property var groups:[]
+    readonly property bool uniformTaskWidth:!labels||width<=500||groups.every(group=>group.windows.length>0)
+    readonly property real taskWidth:labels&&width>500 ? Math.max(100,Math.min(184,width/Math.max(1,repeater.count))) : 44
+    readonly property real taskExtent:taskWidth+row.spacing
     Component.onCompleted:groups=Hub.taskGroups
     Connections {target:Hub;function onTaskGroupsChanged(){if(!s.dragging)s.groups=Hub.taskGroups;}}
     readonly property bool dragging:draggingKey!==""
@@ -25,9 +31,14 @@ Item {
         dragWidth=visual.width;dragItem=visual;engaged();
     }
     function updateDrop(x) {
-        let next=Math.max(0,repeater.count-1);
-        for(let i=0;i<repeater.count;i++){const item=repeater.itemAt(i);if(item&&x<item.x+item.width/2){next=i;break;}}
-        dropIndex=next;
+        if(!uniformTaskWidth){
+            let next=Math.max(0,repeater.count-1);
+            for(let index=0;index<repeater.count;index+=1){const item=repeater.itemAt(index);if(item&&x<item.x+item.width/2){next=index;break;}}
+            if(next!==dropIndex)dropIndex=next;
+            return;
+        }
+        const next=Math.max(0,Math.min(repeater.count-1,Math.floor((x+taskWidth/2)/taskExtent)));
+        if(next!==dropIndex)dropIndex=next;
     }
     function finish(commit) {
         const key=draggingKey,to=dropIndex;
@@ -40,7 +51,7 @@ Item {
         id:scroller;anchors.fill:parent;contentWidth:row.width;contentHeight:height;clip:true
         interactive:!s.dragging;boundsBehavior:Flickable.StopAtBounds;flickableDirection:Flickable.HorizontalFlick
         Row {
-            id:row;height:scroller.height;spacing:4
+            id:row;height:scroller.height;spacing:s.islandStyle ? 6 : 4
             Repeater {
                 id:repeater;model:s.groups
                 Item {
@@ -50,7 +61,15 @@ Item {
                     readonly property bool dragged:s.draggingKey===modelData.key
                     readonly property bool focused:modelData.windows.some(w=>Hub.active(w))
                     readonly property bool labeled:s.labels&&modelData.windows.length>0&&s.width>500
-                    width:labeled ? Math.max(100,Math.min(184,s.width/Math.max(1,repeater.count))) : 44
+                    function openMenu(x,y) {
+                        const wins=modelData.windows;const entries=modelData.app ? Hub.appMenu(modelData.app) : wins.length===1 ? Hub.windowMenu(wins[0]) : [{text:"Close all",icon:"close",quick:true,danger:true,run:()=>wins.forEach(w=>Hub.closeWindow(w))}].concat(wins.map(w=>({text:w.title,icon:"desktop",run:()=>Hub.focusWindow(w)})));
+                        if(!entries.length)return;
+                        const origin=visual.mapToItem(null,0,0);
+                        const title=modelData.name||(modelData.app ? modelData.app.name : "Windows");
+                        const icon=modelData.windows.length ? "desktop" : "apps";
+                        Hub.openTaskbarContext(s.output,origin.x+visual.width/2,s.output.height-s.panelHeight+origin.y,entries,true,title,icon);
+                    }
+                    width:labeled ? s.taskWidth : 44
                     height:row.height;z:dragged ? 10 : 0
                     Rectangle {anchors.fill:parent;anchors.margins:2;radius:14;visible:task.dragged;color:Theme.alpha(Theme.primary,.10);border.width:1;border.color:Theme.outline}
                     Item {
@@ -64,15 +83,44 @@ Item {
                         Behavior on scale {NumberAnimation {duration:Theme.motion(180);easing.type:Easing.OutBack}}
                         Behavior on rotation {NumberAnimation {duration:Theme.motion(180)}}
                         Behavior on x {enabled:!mouse.drag.active;NumberAnimation {duration:Theme.motion(200);easing.type:Easing.OutCubic}}
-                        Rectangle {anchors.fill:parent;anchors.margins:2;radius:14;color:task.dragged ? Theme.surfaceHigh : task.focused ? Theme.primaryContainer : mouse.containsMouse ? Theme.alpha(Theme.surfaceHigh,.65) : "transparent";border.width:task.dragged ? 1 : 0;border.color:Theme.primary
+                        Rectangle {visible:!s.islandStyle;anchors.fill:parent;anchors.margins:2;radius:14;color:task.dragged ? Theme.surfaceHigh : task.focused ? Theme.primaryContainer : mouse.containsMouse ? Theme.alpha(Theme.surfaceHigh,.48) : "transparent";border.width:task.dragged ? 1 : 0;border.color:Theme.primary
                             Behavior on color {ColorAnimation {duration:Theme.motion(140)}}
                         }
-                        Image {id:taskIcon;x:10;anchors.verticalCenter:parent.verticalCenter;width:24;height:24;source:Quickshell.iconPath(task.modelData.icon,true)}
-                        Glyph {visible:taskIcon.status!==Image.Ready;x:10;anchors.verticalCenter:parent.verticalCenter;name:"apps";font.pixelSize:24;color:Theme.primary}
+                        // Island style: each app is its own glass bubble. Focus fills it and morphs it to a squircle.
+                        Island {
+                            visible:s.islandStyle
+                            anchors.centerIn:parent
+                            width:task.labeled ? parent.width : Math.min(parent.width,parent.height);height:Math.min(parent.width,parent.height)
+                            radius:task.focused&&!task.labeled ? height*.32 : height/2
+                            strong:task.focused
+                            border.color:task.dragged ? Theme.primary : Theme.glassEdge
+                            Behavior on radius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+                        }
+                        // The halo follows the actual icon centre in both the
+                        // compact and labelled taskbar layouts.
+                        Rectangle {
+                            id:taskHoverHalo
+                            width:38;height:38;radius:19
+                            x:taskIcon.x+taskIcon.width/2-width/2
+                            anchors.verticalCenter:parent.verticalCenter
+                            color:Theme.alpha(s.islandStyle ? Theme.stateLayer : Theme.primary,s.islandStyle ? .10 : .20)
+                            opacity:mouse.containsMouse||visual.activeFocus ? 1 : 0
+                            scale:mouse.containsMouse||visual.activeFocus ? 1 : .70
+                            Behavior on opacity {NumberAnimation {duration:Theme.motion(130)}}
+                            Behavior on scale {NumberAnimation {duration:Theme.motion(170);easing.type:Easing.OutCubic}}
+                        }
+                        Image {id:taskIcon;x:task.labeled ? 10 : (parent.width-width)/2;anchors.verticalCenter:parent.verticalCenter;width:s.islandStyle&&!task.labeled ? 26 : 24;height:width;sourceSize:Qt.size(48,48);source:Quickshell.iconPath(task.modelData.icon,true)
+                            scale:s.islandStyle&&mouse.containsMouse&&!s.dragging&&!Theme.reduceMotion ? 1.12 : 1
+                            Behavior on scale {NumberAnimation {duration:Theme.motion(220);easing.type:Easing.OutBack}}
+                        }
+                        Glyph {visible:taskIcon.status!==Image.Ready;x:taskIcon.x;anchors.verticalCenter:parent.verticalCenter;name:Hub.glyphForApp(task.modelData.app);font.pixelSize:24;color:s.islandStyle ? (Theme.light ? Theme.containerInk : Theme.primary) : Theme.primary}
                         MText {visible:task.labeled;x:42;width:parent.width-58;anchors.verticalCenter:parent.verticalCenter;text:task.modelData.windows.length===1 ? task.modelData.windows[0].title : task.modelData.name;font.pixelSize:12;color:task.focused ? Theme.onContainer : Theme.text}
-                        MText {visible:task.modelData.windows.length>1;anchors.right:parent.right;anchors.rightMargin:7;anchors.verticalCenter:parent.verticalCenter;text:task.modelData.windows.length;font.pixelSize:10;color:Theme.primary}
-                        Rectangle {visible:task.modelData.windows.length>0;anchors.bottom:parent.bottom;anchors.bottomMargin:2;anchors.horizontalCenter:parent.horizontalCenter;width:task.focused ? 20 : 5;height:3;radius:2;color:Theme.primary}
-                        OpalMenu {id:menu;entries:visible ? (task.modelData.app ? Hub.appMenu(task.modelData.app) : task.modelData.windows.reduce((all,w)=>all.concat(Hub.windowMenu(w)),[])) : [];onOpened:{s.contextOpen=true;s.engaged();}onClosed:{s.contextOpen=false;s.released();}}
+                        Rectangle {visible:task.modelData.windows.length>1;anchors.right:parent.right;anchors.top:parent.top;anchors.rightMargin:1;width:16;height:16;radius:8;color:Theme.primaryContainer;border.width:1;border.color:Theme.outline
+                            MText {anchors.centerIn:parent;text:Math.min(99,task.modelData.windows.length);font.pixelSize:9;font.weight:Font.Bold;color:Theme.onContainer}
+                        }
+                        Rectangle {visible:task.modelData.windows.length>0;anchors.bottom:parent.bottom;anchors.bottomMargin:s.islandStyle ? 3 : 2;anchors.horizontalCenter:parent.horizontalCenter;width:task.focused ? 14 : 4;height:s.islandStyle ? 3 : 3;radius:2;color:s.islandStyle ? (Theme.light ? Theme.containerInk : Theme.primary) : Theme.primary
+                            Behavior on width {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+                        }
                         MouseArea {
                             id:mouse;anchors.fill:parent;hoverEnabled:true;acceptedButtons:Qt.LeftButton|Qt.RightButton
                             preventStealing:true
@@ -82,14 +130,11 @@ Item {
                             onPositionChanged:if(drag.active){suppressClick=true;s.begin(task.modelData.key,task.index,visual);s.updateDrop(visual.mapToItem(row,mouseX,mouseY).x);}
                             onReleased:{if(task.dragged){const y=visual.mapToItem(s,mouseX,mouseY).y;s.finish(y>=-8&&y<=s.height+8);}else visual.x=0;}
                             onCanceled:{if(task.dragged)s.finish(false);else visual.x=0;suppressClick=true;}
-                            onClicked:e=>{if(suppressClick)return;if(e.button===Qt.RightButton)menu.popup(e.x,e.y);else Hub.activateGroup(task.modelData);}
-                            onPressAndHold:e=>{if(!drag.active){suppressClick=true;menu.popup(e.x,e.y);}}
+                            onClicked:e=>{if(suppressClick)return;if(e.button===Qt.RightButton)task.openMenu(e.x,e.y);else Hub.activateGroup(task.modelData);}
+                            onPressAndHold:e=>{if(!drag.active){suppressClick=true;task.openMenu(e.x,e.y);}}
                             onEntered:{s.hovered=true;s.engaged();}
                             onExited:{s.hovered=false;if(!s.interacting)s.released();}
                         }
-                        ToolTip.visible:mouse.containsMouse&&!s.dragging
-                        ToolTip.text:task.modelData.name+" · Drag or Ctrl+arrows to reorder · Right-click for actions"
-                        ToolTip.delay:650
                         activeFocusOnTab:true
                         Keys.onReturnPressed:Hub.activateGroup(task.modelData)
                         Keys.onLeftPressed:event=>{if(event.modifiers&Qt.ControlModifier){Hub.reorderTask(task.modelData.key,Math.max(0,task.index-1));event.accepted=true;}else event.accepted=false;}
@@ -108,7 +153,8 @@ Item {
             const delta=x<32 ? -12 : x>scroller.width-32 ? 12 : 0;
             const previous=scroller.contentX;
             scroller.contentX=Math.max(0,Math.min(Math.max(0,scroller.contentWidth-scroller.width),previous+delta));
-            if(s.dragItem){s.dragItem.x+=scroller.contentX-previous;s.updateDrop(s.dragItem.mapToItem(row,s.dragItem.width/2,0).x);}
+            const moved=scroller.contentX-previous;
+            if(s.dragItem&&moved!==0){s.dragItem.x+=moved;s.updateDrop(s.dragItem.mapToItem(row,s.dragItem.width/2,0).x);}
         }
     }
 }

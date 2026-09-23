@@ -1,33 +1,56 @@
 import QtQuick
 import QtQuick.Controls
-import QtQml.Models
 
-Menu {
+// In-panel context menu. It uses the same content as the shelf menu, so every right click looks and behaves the same.
+Popup {
     id:menu
     property var entries:[]
+    property string title:""
+    property string icon:""
     popupType:Popup.Window
-    implicitWidth:280
+    implicitWidth:300
+    implicitHeight:body.implicitHeight
+    padding:0
     margins:8
-    padding:8
     dim:false
-    closePolicy:Popup.CloseOnEscape | Popup.CloseOnPressOutside
-    background:Rectangle {radius:22;color:Theme.surface;border.width:1;border.color:Theme.outline}
-    Instantiator {
-        model:menu.entries
-        delegate:MenuItem {
-            id:row
-            required property var modelData
-            text:modelData.text
-            enabled:modelData.enabled!==false
-            implicitHeight:46
-            leftPadding:42;rightPadding:14
-            contentItem:MText {text:row.text;font.pixelSize:13;color:row.enabled ? Theme.text : Theme.muted;verticalAlignment:Text.AlignVCenter}
-            background:Rectangle {radius:14;color:row.highlighted ? Theme.primaryContainer : "transparent"
-                Glyph {x:10;anchors.verticalCenter:parent.verticalCenter;name:row.modelData.icon||"next";font.pixelSize:20;color:Theme.primary}
-            }
-            onTriggered:if(modelData.run)modelData.run()
+    // Popup.Window ignores Popup.open coordinates in a layer-shell panel, so the geometry is set before it opens.
+    function popupFrom(item, clickX, clickY) {
+        const point=item.mapToItem(null,clickX,clickY);
+        const panelWidth=item.window ? item.window.width : 0;
+        const panelHeight=item.window ? item.window.height : 0;
+        const menuWidth=Math.max(width,implicitWidth);
+        const menuHeight=Math.max(height,implicitHeight);
+        const margin=8;
+        const maxX=Math.max(margin,panelWidth-menuWidth-margin);
+        const maxY=Math.max(margin,panelHeight-menuHeight-margin);
+        menu.x=Math.round(panelWidth ? Math.max(margin,Math.min(point.x,maxX)) : point.x);
+        menu.y=Math.round(panelHeight ? Math.max(margin,Math.min(point.y-menuHeight-margin,maxY)) : point.y);
+        menu.open();
+    }
+    // Menu-compatible entry point: coordinates are local to the parent item; no coordinates means its centre.
+    function popup(px, py) {
+        const owner=menu.parent;
+        if(!owner){menu.open();return;}
+        popupFrom(owner,px===undefined ? owner.width/2 : px,py===undefined ? owner.height/2 : py);
+    }
+    closePolicy:Popup.CloseOnEscape|Popup.CloseOnPressOutside
+    enter:Transition {
+        ParallelAnimation {
+            NumberAnimation {property:"opacity";from:0;to:1;duration:Theme.motion(150)}
+            NumberAnimation {property:"scale";from:.92;to:1;duration:Theme.motion(220);easing.type:Easing.OutBack;easing.overshoot:1.2}
         }
-        onObjectAdded:(index,object)=>menu.insertItem(index,object)
-        onObjectRemoved:(index,object)=>menu.removeItem(object)
+    }
+    exit:Transition {NumberAnimation {property:"opacity";to:0;duration:Theme.motion(110)}}
+    background:Rectangle {
+        radius:24
+        color:Theme.alpha(Theme.light ? Theme.surfaceLowest : Theme.surfaceHigh,.98)
+        border.width:1;border.color:Theme.glassEdge
+    }
+    contentItem:ContextMenuBody {
+        id:body
+        entries:menu.entries
+        title:menu.title
+        icon:menu.icon
+        onActivated:entry=>{menu.close();if(entry.run)entry.run();}
     }
 }
