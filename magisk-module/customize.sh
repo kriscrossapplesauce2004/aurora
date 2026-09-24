@@ -9,7 +9,7 @@ VERSION=$(grep_prop versionCode "$MODPATH/module.prop")
 SETS="$AURORA/versions"
 STAGE="$SETS/.stage-$VERSION-$$"
 TARGET="$SETS/$VERSION"
-mkdir -p "$STAGE/bin" "$STAGE/guest-tools" "$STAGE/guest-assets" "$STAGE/guest-config" "$STAGE/sessions" "$AURORA/etc" "$AURORA/log" "$AURORA/run" "$AURORA/lxc" "$SETS"
+mkdir -p "$STAGE/bin" "$STAGE/libexec" "$STAGE/guest-tools" "$STAGE/guest-assets" "$STAGE/guest-config" "$STAGE/sessions" "$AURORA/etc" "$AURORA/log" "$AURORA/run" "$AURORA/lxc" "$SETS"
 trap 'rm -rf "$STAGE"' EXIT
 [ ! -e "$TARGET" ] || abort "! payload version $VERSION is already staged"
 
@@ -34,11 +34,15 @@ for f in cage gamescope-headless labwc mutter sway weston; do
     rm -f "$STAGE/sessions/$f.session" "$AURORA/etc/sessions/$f.session"
 done
 
-for f in evgrab aurora-input-forwarder aurorad auroractl aurora-audio-probe aurora-audio-owner aurora-audio-route aurora-audio-smoke device-config generate-lxc-config generate-guest-config lifecycle-lib boot-profile guest-distro env-install guest-start desktop-on desktop-off desktop-memory session-catalog session-select session-set run-transition external-presenter external-input native-plasma native-kms-gate native-restore aurora-hostagent aurora-color-compat cycle-stress.sh; do
-    [ -f "$MODPATH/tools/$f" ] || abort "! missing $f in zip"
-    cp -f "$MODPATH/tools/$f" "$STAGE/bin/$f"
-    chmod 0755 "$STAGE/bin/$f"
-done
+[ -f "$MODPATH/tools/aurora" ] || abort "! missing Android Aurora executable"
+cp -f "$MODPATH/tools/aurora" "$STAGE/bin/aurora"
+chmod 0755 "$STAGE/bin/aurora"
+while IFS= read -r f; do
+    case "$f" in ''|*[!a-zA-Z0-9._-]*) abort "! invalid private command name" ;; esac
+    ln -s ../bin/aurora "$STAGE/libexec/$f" || abort "! cannot stage private command $f"
+done < "$MODPATH/tools/android-commands"
+cp -f "$MODPATH/guest-tools/aurora" "$STAGE/guest-tools/aurora"
+chmod 0755 "$STAGE/guest-tools/aurora"
 cp -f "$MODPATH/tools/lxc-config-base" "$STAGE/lxc-config-base"
 for f in aurora-guest-agent aurora-audio-probe aurora-audio-session aurora-audio-volume aurora-pipewire-smoke aurora-input-actions aurora-media-action aurora-connectivity aurora-connectivity-menu aurora-platform aurora-apps aurora-phosh-session aurora-compat-check aurora-osk aurora-firefox-content-defaults aurora-session-launch aurora-plasma-session aurora-plasma-client aurora-hyprland aurora-hyprland-opal aurora-hyprland-omarchy aurora-omarchy aurora-opal aurora-opal-bridge opal; do
   if [ -f "$MODPATH/guest-tools/$f" ]; then
@@ -189,6 +193,10 @@ for f in "$MODPATH"/sessions/*.session; do
     chmod 0644 "$STAGE/sessions/${f##*/}" "$AURORA/etc/sessions/${f##*/}"
 done
 
+if [ -d "$GUEST_ROOT/etc" ]; then
+    AURORA="$STAGE" "$STAGE/bin/aurora" internal install-guest "$GUEST_ROOT" || abort "! guest CLI migration failed"
+fi
+
 # Verify the complete staged set before one atomic pointer change. Keep the
 # prior target intact for recovery; runtime paths resolve through current/.
 (cd "$STAGE" && find . -type f -print | LC_ALL=C sort | xargs sha256sum) > "$STAGE/SHA256SUMS" || abort "! payload hash generation failed"
@@ -200,6 +208,7 @@ if [ -d "$AURORA/bin" ] && [ ! -L "$AURORA/bin" ]; then
     mv "$AURORA/bin" "$SETS/legacy-bin" || abort "! cannot preserve prior toolkit"
 fi
 ln -s current/bin "$AURORA/bin.new" && mv -f "$AURORA/bin.new" "$AURORA/bin" || abort "! cannot activate toolkit"
+ln -s current/libexec "$AURORA/libexec.new" && mv -f "$AURORA/libexec.new" "$AURORA/libexec" || abort "! cannot activate private commands"
 if [ -d "$AURORA/guest-tools" ] && [ ! -L "$AURORA/guest-tools" ]; then
     mv "$AURORA/guest-tools" "$SETS/legacy-guest-tools" || abort "! cannot preserve guest tools"
 fi

@@ -163,8 +163,8 @@ def validate_archive(path, kind, distro='debian'):
                 if PurePosixPath(name).is_absolute() or '..' in PurePosixPath(name).parts:
                     raise Failure('The ZIP contains an unsafe path.')
             if kind == 'module':
-                required = {'module.prop', 'customize.sh', 'tools/guest-distro', 'tools/desktop-on',
-                            'tools/env-install', 'tools/session-catalog', 'tools/session-select',
+                required = {'module.prop', 'customize.sh', 'tools/aurora', 'tools/android-commands',
+                            'guest-tools/aurora',
                             'guest-tools/aurora-platform', 'sessions/phosh.session',
                             'sessions/plasma-mobile.session',
                             'zygisk/arm64-v8a.so', 'zygisk/armeabi-v7a.so'}
@@ -601,9 +601,9 @@ class Engine:
             raise Failure('The LXC build is incomplete or still uses the old installation path.')
 
         module = repo / 'magisk-module' / f'aurora-magisk-v{version}.zip'
-        module_inputs = ('version.properties', 'magisk-module', 'toggle', 'device-profiles',
-                         'guest', 'control/src', 'control/include', 'audio/src', 'audio/profiles',
-                         'zygisk/jni', 'tools/evgrab', 'tools/input-forwarder')
+        module_inputs = ('version.properties', 'magisk-module', 'device-profiles',
+                         'guest', 'cli', 'audio/profiles',
+                         'zygisk/jni', 'control/include')
         if not valid(module, 'module') or not fresh(module, module_inputs):
             sdk = Path(os.environ.get('ANDROID_SDK_ROOT', Path.home() / 'android-sdk')).expanduser()
             ndk = Path(os.environ.get('ANDROID_NDK_HOME', sdk / 'ndk/27.2.12479018')).expanduser()
@@ -611,13 +611,7 @@ class Engine:
             if not ndk_build.is_file():
                 raise Failure(f'Android NDK r27.2 is required to build the Aurora module: {ndk_build}')
             self.phase('Cross-building the Aurora root integration')
-            self.run(['make', '-C', repo / 'tools/evgrab', f'NDK={ndk}'], timeout=600)
-            self.run(['make', '-C', repo / 'tools/input-forwarder', f'NDK={ndk}'], timeout=600)
-            env = dict(os.environ, NDK=str(ndk))
-            self.run([repo / 'control/build.sh', 'android'], cwd=repo, env=env, timeout=1800)
-            self.run([repo / 'control/build.sh', 'guest'], cwd=repo, env=env, timeout=1800)
-            self.run([repo / 'audio/build.sh', 'android'], cwd=repo, env=env, timeout=1800)
-            self.run([repo / 'audio/build.sh', 'guest'], cwd=repo, env=env, timeout=1800)
+            self.run([repo / 'cli/build.sh', 'all'], cwd=repo, timeout=1800)
             self.run([ndk_build, 'NDK_PROJECT_PATH=.', 'APP_BUILD_SCRIPT=jni/Android.mk',
                       'NDK_APPLICATION_MK=jni/Application.mk'], cwd=repo / 'zygisk', timeout=1800)
             self.run([repo / 'magisk-module/build-module.sh'], cwd=repo, timeout=1800)
@@ -1027,16 +1021,16 @@ fi
         missing = [key for key in REQUIRED if f'CONFIG_{key}=y' not in config]
         if missing:
             raise Failure('Running kernel is missing: ' + ', '.join(missing))
-        self.shell('test -x /data/aurora/bin/desktop-on && '
+        self.shell('test -x /data/aurora/bin/aurora && '
                    'test -x /data/aurora/lxc/bin/lxc-start && '
                    'test -f /data/aurora/active-guest/etc/os-release && '
                    'test -d /data/adb/modules/aurora && '
                    'test ! -f /data/adb/modules/aurora/disable', root=True)
         # The companion installs desktop environments through these; a device
         # without them boots but cannot be provisioned from the phone.
-        self.shell('test -x /data/aurora/bin/env-install && '
-                   'test -x /data/aurora/bin/session-catalog && '
-                   'test -x /data/aurora/bin/session-select && '
+        self.shell('test -x /data/aurora/libexec/env-install && '
+                   'test -x /data/aurora/libexec/session-catalog && '
+                   'test -x /data/aurora/libexec/session-select && '
                    'test -f /data/aurora/etc/sessions/phosh.session && '
                    'test -x /data/aurora/guest-tools/aurora-platform', root=True)
         self.log('Kernel, module, runtime, guest, and environment toolkit checks passed. '

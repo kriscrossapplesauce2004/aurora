@@ -1,7 +1,7 @@
 #!/bin/sh
 # Package the Aurora Magisk module zip (install via Magisk app -> Modules
 # -> Install from storage; no META-INF needed for app installs).
-# Pulls the device evgrab binary and toggle scripts in as payload.
+# Ships one Go executable per operating system; hardware control is built in.
 
 set -eu
 cd "$(dirname "$0")"
@@ -9,57 +9,11 @@ REPO=$(cd .. && pwd)
 . "$REPO/release/version.sh"
 aurora_load_version "$REPO/version.properties"
 
-[ -f ../tools/evgrab/evgrab ] || { echo "build evgrab for aarch64 first (tools/evgrab, make CC=aarch64-linux-gnu-gcc)" >&2; exit 1; }
-file ../tools/evgrab/evgrab | grep -q aarch64 || { echo "evgrab is not an aarch64 build" >&2; exit 1; }
-INPUT_FORWARDER="../tools/input-forwarder/aurora-input-forwarder"
-[ -f "$INPUT_FORWARDER" ] || { echo "build aurora-input-forwarder with the Android NDK first" >&2; exit 1; }
-file "$INPUT_FORWARDER" | grep -q 'ARM aarch64' || { echo "aurora-input-forwarder is not an Android aarch64 build" >&2; exit 1; }
+sh "$REPO/cli/build.sh" android
+sh "$REPO/cli/build.sh" guest
 INPUT_PROXY="../build/aurora-input-proxy/aurora-input-proxy"
 [ -f "$INPUT_PROXY" ] || { echo "build the guest input proxy first (./guest/build-aurora-input-proxy-cross.sh)" >&2; exit 1; }
 file "$INPUT_PROXY" | grep -q 'ARM aarch64' || { echo "aurora-input-proxy is not an aarch64 build" >&2; exit 1; }
-
-AURORAD="../control/build/android-arm64/aurorad"
-AURORACTL="../control/build/android-arm64/auroractl"
-AURORA_GUEST_AGENT="../control/build/guest-arm64/aurora-guest-agent"
-AURORA_AUDIO_HOST="../audio/build/android-arm64/aurora-audio-probe"
-AURORA_AUDIO_GUEST="../audio/build/guest-arm64/aurora-audio-probe"
-AURORA_AUDIO_OWNER="../audio/build/android-arm64/aurora-audio-owner"
-for binary in "$AURORAD" "$AURORACTL"; do
-    [ -f "$binary" ] || {
-        echo "build the native control plane first (./control/build.sh android)" >&2
-        exit 1
-    }
-    file "$binary" | grep -q 'ARM aarch64' || {
-        echo "$binary is not an Android aarch64 build" >&2
-        exit 1
-    }
-done
-[ -f "$AURORA_GUEST_AGENT" ] || {
-    echo "build the Debian guest agent first (./control/build.sh guest)" >&2
-    exit 1
-}
-file "$AURORA_GUEST_AGENT" | grep -q 'ARM aarch64' || {
-    echo "$AURORA_GUEST_AGENT is not a Linux aarch64 build" >&2
-    exit 1
-}
-file "$AURORA_GUEST_AGENT" | grep -q 'statically linked' || {
-    echo "$AURORA_GUEST_AGENT must be rebuilt as a distro-neutral static guest binary" >&2
-    exit 1
-}
-for binary in "$AURORA_AUDIO_HOST" "$AURORA_AUDIO_GUEST" "$AURORA_AUDIO_OWNER"; do
-    [ -f "$binary" ] || {
-        echo "build the direct audio probes first (./audio/build.sh all)" >&2
-        exit 1
-    }
-    file "$binary" | grep -q 'ARM aarch64' || {
-        echo "$binary is not an aarch64 build" >&2
-        exit 1
-    }
-done
-file "$AURORA_AUDIO_GUEST" | grep -q 'statically linked' || {
-    echo "$AURORA_AUDIO_GUEST must be rebuilt as a distro-neutral static guest binary" >&2
-    exit 1
-}
 
 ZYGISK_64="../zygisk/libs/arm64-v8a/libaurora.so"
 ZYGISK_32="../zygisk/libs/armeabi-v7a/libaurora.so"
@@ -73,19 +27,6 @@ cp customize.sh post-fs-data.sh service.sh sepolicy.rule "$WORK/"
 aurora_render_version_template module.prop.in "$WORK/module.prop"
 mkdir -p "$WORK/tools" "$WORK/guest-tools" "$WORK/guest-assets" "$WORK/zygisk" \
     "$WORK/device-profiles" "$WORK/audio-profiles"
-cp ../tools/evgrab/evgrab "$INPUT_FORWARDER" \
-   "$AURORAD" "$AURORACTL" "$AURORA_AUDIO_HOST" "$AURORA_AUDIO_OWNER" \
-   ../toggle/device-config ../toggle/generate-lxc-config ../toggle/generate-guest-config \
-   ../toggle/lifecycle-lib ../toggle/boot-profile ../toggle/guest-distro \
-   ../toggle/env-install \
-   ../toggle/guest-start ../toggle/desktop-on ../toggle/desktop-off \
-   ../toggle/desktop-memory \
-    ../toggle/session-catalog ../toggle/session-select ../toggle/session-set \
-   ../toggle/run-transition ../toggle/external-presenter ../toggle/external-input \
-   ../toggle/native-plasma ../toggle/native-kms-gate ../toggle/native-restore \
-   ../toggle/aurora-hostagent ../toggle/aurora-color-compat \
-   ../toggle/cycle-stress.sh ../audio/aurora-audio-route ../audio/aurora-audio-smoke \
-   "$WORK/tools/"
 cp ../device-profiles/*.conf "$WORK/device-profiles/"
 cp ../audio/profiles/*.conf "$WORK/audio-profiles/"
 mkdir -p "$WORK/sessions" "$WORK/guest-config"
@@ -93,8 +34,6 @@ cp ../guest/sessions/*.session "$WORK/sessions/"
 cp ../guest/hyprland.conf "$WORK/guest-config/hyprland.conf"
 cp ../guest/hyprland-opal.conf "$WORK/guest-config/hyprland-opal.conf"
 cp ../guest/hyprland-omarchy.conf "$WORK/guest-config/hyprland-omarchy.conf"
-cp "$AURORA_GUEST_AGENT" "$WORK/guest-tools/aurora-guest-agent"
-cp "$AURORA_AUDIO_GUEST" "$WORK/guest-tools/aurora-audio-probe"
 cp ../guest/aurora-audio-session "$WORK/guest-tools/aurora-audio-session"
 cp ../guest/aurora-audio-volume "$WORK/guest-tools/aurora-audio-volume"
 cp ../guest/aurora-pipewire-smoke "$WORK/guest-tools/aurora-pipewire-smoke"
@@ -133,6 +72,8 @@ cp ../guest/90-aurora-direct.conf "$WORK/guest-tools/90-aurora-direct.conf"
 cp ../guest/lxc/config "$WORK/tools/lxc-config-base"
 cp "$ZYGISK_64" "$WORK/zygisk/arm64-v8a.so"
 cp "$ZYGISK_32" "$WORK/zygisk/armeabi-v7a.so"
+
+python3 "$REPO/cli/stage.py" --payload "$WORK"
 
 OUT="$PWD/aurora-magisk-v$AURORA_VERSION.zip"
 rm -f "$OUT"

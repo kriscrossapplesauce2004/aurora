@@ -22,7 +22,7 @@ if [ -x "$AURORA/lxc/bin/lxc-info" ]; then
     fi
 fi
 if [ -d "$AURORA/versions/$version" ]; then
-    [ -x "$AURORA/bin/guest-distro" ] || { echo 'Existing module version is incomplete.'; exit 1; }
+    [ -x "$AURORA/libexec/guest-distro" ] || { echo 'Existing module version is incomplete.'; exit 1; }
     [ "$(readlink -f "$AURORA/current")" = "$AURORA/versions/$version" ] || {
         echo 'This module version exists but is not active. Resolve the existing installation before retrying.'
         exit 1
@@ -46,9 +46,9 @@ if ! mv "$runtime" "$AURORA/lxc/bin"; then
     [ ! -d "$previous" ] || mv "$previous" "$AURORA/lxc/bin"
     exit 1
 fi
-inventory=$("$AURORA/bin/guest-distro" list)
+inventory=$("$AURORA/libexec/guest-distro" list)
 if ! printf '%s\n' "$inventory" | grep -q "^$distro|installed|"; then
-    "$AURORA/bin/guest-distro" install "$distro" "$stage/rootfs"
+    "$AURORA/libexec/guest-distro" install "$distro" "$stage/rootfs"
 fi
 # Older module installers created an asset directory where the pointer belongs.
 if [ ! -L "$AURORA/active-guest" ] && [ -d "$AURORA/active-guest" ]; then
@@ -63,8 +63,8 @@ if [ ! -L "$AURORA/active-guest" ] && [ -d "$AURORA/active-guest" ]; then
     mv "$AURORA/active-guest" "$pointer_backup"
     echo "Preserved misplaced guest assets at $pointer_backup."
 fi
-"$AURORA/bin/guest-distro" activate "$distro"
-root=$("$AURORA/bin/guest-distro" root)
+"$AURORA/libexec/guest-distro" activate "$distro"
+root=$("$AURORA/libexec/guest-distro" root)
 [ -d "$root/etc" ]
 [ -f "$root/etc/passwd" ] || { echo 'Active guest has no passwd database.'; exit 1; }
 passwd_new="$root/etc/passwd.new.$$"
