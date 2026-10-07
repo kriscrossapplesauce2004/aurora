@@ -14,7 +14,7 @@ Rectangle {
     radius:mouse.pressed ? 20 : active ? 38 : 24
     color:active ? accent : Theme.tile
     scale:mouse.pressed ? .97 : 1
-    Behavior on radius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+    Behavior on radius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
     Behavior on color {ColorAnimation {duration:Theme.motion(200)}}
     Behavior on scale {NumberAnimation {duration:Theme.motion(150)}}
     Glyph {x:20;y:16;name:t.icon;color:t.active ? Theme.onPrimary : Theme.text;font.pixelSize:25}

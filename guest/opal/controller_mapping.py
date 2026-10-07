@@ -6,17 +6,19 @@ from pathlib import Path
 _BUTTON_ACTIONS = {
     304: 'accept', 305: 'back', 307: 'search', 308: 'pin',
     310: 'previousTab', 311: 'nextTab', 312: 'pageUp', 313: 'pageDown',
-    314: 'menu', 315: 'home', 316: 'home', 317: 'search', 318: 'menu',
+    314: 'menu', 315: 'home', 316: 'guide', 317: 'search', 318: 'menu',
     544: 'up', 545: 'down', 546: 'left', 547: 'right',
 }
 _FALLBACK_BUTTON_ACTIONS = {
     0: 'accept', 1: 'back', 2: 'pin', 3: 'search',
     4: 'previousTab', 5: 'nextTab', 6: 'menu', 7: 'home',
-    8: 'home', 9: 'search', 10: 'menu',
+    8: 'guide', 9: 'search', 10: 'menu',
 }
 _NINTENDO_ACTIONS = {
     'accept': 'back', 'back': 'accept', 'pin': 'search', 'search': 'pin',
 }
+# Guide timing: a tap ends below the tap limit, a hold starts at the hold time.
+GUIDE_TAP_MAX, GUIDE_HOLD_MIN = .45, .6
 _FALLBACK_AXIS_CODES = {0: 0, 1: 1, 6: 16, 7: 17}
 _TRIGGER_CODES = {
     'stadia': (10, 9),
@@ -106,6 +108,8 @@ class NavigationState:
         self.buttons, self.axes, self.profile = buttons, axes, profile
         self.states, self.held, self.blocked = {}, {}, set()
         self.trigger_rest = {}
+        # Guide press time, chord flag and hold flag for the current press.
+        self.guide_down, self.guide_chord, self.guide_held = None, False, False
         self._button_actions = {}
         self._axis_actions = {}
         self._trigger_codes = _TRIGGER_CODES.get(profile, ())
@@ -165,6 +169,12 @@ class NavigationState:
         else:
             return []
         self.states[token] = state
+        if kind == 1 and key == 'guide' and not initial:
+            return self._guide_edge(token, state, old, now)
+        if kind == 1 and key == 'accept' and state and not old and not initial \
+                and self.guide_down is not None and token not in self.blocked:
+            self.guide_chord = True
+            return ['guide+accept']
         if initial:
             if state:
                 self.blocked.add(token)
@@ -179,8 +189,28 @@ class NavigationState:
             self.held[token] = (key, now + .38)
         return [key]
 
+    def _guide_edge(self, token, state, old, now):
+        if token in self.blocked:
+            # A Guide held at startup is ignored until its release.
+            if not state:
+                self.blocked.discard(token)
+            return []
+        if state and not old:
+            self.guide_down, self.guide_chord, self.guide_held = now, False, False
+            return []
+        if state or self.guide_down is None:
+            return []
+        short = now - self.guide_down < GUIDE_TAP_MAX
+        quiet = not self.guide_chord and not self.guide_held
+        self.guide_down = None
+        return ['guide'] if short and quiet else []
+
     def repeat(self, now):
         result = []
+        if (self.guide_down is not None and not self.guide_held and not self.guide_chord
+                and now - self.guide_down >= GUIDE_HOLD_MIN):
+            self.guide_held = True
+            result.append('guideHold')
         for token, (key, due) in self.held.items():
             if now >= due:
                 if key not in result:
@@ -189,9 +219,11 @@ class NavigationState:
         return result
 
     def wait(self, now):
-        if not self.held:
-            return .5
         delay = .5
+        if self.guide_down is not None and not self.guide_held and not self.guide_chord:
+            delay = min(delay, self.guide_down + GUIDE_HOLD_MIN - now)
+        if not self.held:
+            return max(0, delay)
         for _, due in self.held.values():
             remaining = due - now
             if remaining < delay:

@@ -36,7 +36,7 @@ Rectangle {
                 width:size;height:size;radius:size/2
                 x:row.checked ? track.width-width-4 : (rowMouse.pressed ? 2 : 8);anchors.verticalCenter:parent.verticalCenter
                 color:row.checked ? Theme.onPrimary : Theme.subtext
-                Behavior on x {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack;easing.overshoot:1.4}}
+                Behavior on x {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic;easing.overshoot:1.4}}
                 Behavior on width {NumberAnimation {duration:Theme.motion(180);easing.type:Easing.OutCubic}}
                 Behavior on height {NumberAnimation {duration:Theme.motion(180);easing.type:Easing.OutCubic}}
                 Glyph {anchors.centerIn:parent;visible:row.checked;name:"check";font.pixelSize:16;color:Theme.primary}

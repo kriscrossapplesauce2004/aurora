@@ -104,7 +104,7 @@ Item {
                                 required property var modelData
                                 width:36;height:36;radius:chipMouse.containsMouse ? 12 : 18
                                 color:chipMouse.containsMouse ? Theme.primary : Theme.alpha(Theme.light ? "#ffffff" : Theme.glassRaised,Theme.light ? .85 : .7)
-                                Behavior on radius {NumberAnimation {duration:Theme.motion(200);easing.type:Easing.OutBack}}
+                                Behavior on radius {NumberAnimation {duration:Theme.motion(200);easing.type:Easing.OutCubic}}
                                 MText {anchors.centerIn:parent;text:modelData.text;font.pixelSize:13;font.weight:Font.Medium;color:chipMouse.containsMouse ? Theme.onPrimary : Theme.text}
                                 MouseArea {id:chipMouse;anchors.fill:parent;hoverEnabled:true;cursorShape:Qt.PointingHandCursor;onClicked:body.activated(parent.modelData)}
                                 Accessible.role:Accessible.Button;Accessible.name:chipGroup.modelData.title+" "+modelData.text

@@ -11,23 +11,19 @@ Rectangle {
     property bool touch:false
     property int tintIndex:0
     signal activated()
-    radius: mouse.pressed ? 20 : (large ? 32 : 26)
-    color: selected ? Theme.primaryContainer : mouse.containsMouse ? Theme.alpha(Theme.surfaceHigh,.65) : bare ? "transparent" : Theme.alpha(Theme.surface,0.60)
+    radius: large ? Theme.shapeXl : Theme.shapeLg
+    color: selected ? Theme.primaryContainer : mouse.containsMouse ? Theme.level(3) : bare ? "transparent" : Theme.level(2)
     border.width:selected ? (large ? 3 : 2) : 0
     border.color:Theme.primary
-    scale:mouse.pressed ? .96 : 1
+    scale:1
     Behavior on scale { NumberAnimation { duration:Theme.motion(180); easing.type:Easing.OutCubic } }
     Behavior on color { ColorAnimation { duration:Theme.motion(180) } }
-    Behavior on radius { NumberAnimation { duration:Theme.motion(180); easing.type:Easing.OutBack } }
-    Rectangle {
+    Behavior on radius { NumberAnimation { duration:Theme.motion(180); easing.type:Easing.OutCubic } }
+    AppIcon {
         id:iconBg
         anchors {horizontalCenter:parent.horizontalCenter; top:parent.top; topMargin:t.large ? 24 : t.bare ? 12 : 17}
         width:t.large ? 88 : t.bare&&!t.touch ? 48 : 56; height:width
-        radius:t.touch ? (t.tintIndex%3===0 ? width/2 : t.tintIndex%3===1 ? 18 : 12) : t.large ? 28 : 18
-        rotation:t.touch&&t.tintIndex%3===2 ? -5 : 0
-        color:Theme.alpha([Theme.primary,Theme.secondary,Theme.tertiary][t.tintIndex%3], Theme.light ? .4 : .15)
-        Image { id:image; anchors.centerIn:parent; width:parent.width*.68; height:width; source:Quickshell.iconPath(t.app.icon,true); sourceSize:Qt.size(width,height); asynchronous:true; cache:true; rotation:-parent.rotation; smooth:true }
-    Glyph { visible:image.status!==Image.Ready; anchors.centerIn:parent; name:Hub.glyphForApp(t.app); color:Theme.primary; font.pixelSize:30 }
+        app:t.app
     }
     MText { anchors {left:parent.left; right:parent.right; top:!t.large ? iconBg.bottom : undefined; topMargin:8; bottom:!t.large ? undefined : parent.bottom; bottomMargin:t.large ? 24 : 14; leftMargin:10; rightMargin:10}
  text:t.app.name; font.pixelSize:t.large ? 17 : 12; font.weight:Font.Medium; horizontalAlignment:Text.AlignHCenter; maximumLineCount:2; wrapMode:t.touch ? Text.WordWrap : Text.Wrap; elide:Text.ElideRight }

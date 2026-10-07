@@ -122,7 +122,7 @@ Column {
         radius: lead || active ? height / 2 : keyMouse.pressed ? 10 : 16
         color: lead || active ? (Theme.light ? Theme.containerInk : Theme.primary) : Theme.alpha(Theme.light ? "#ffffff" : Theme.glassRaised, Theme.light ? .7 : .5)
         scale: keyMouse.pressed ? .94 : 1
-        Behavior on radius { NumberAnimation { duration: Theme.motion(220); easing.type: Easing.OutBack } }
+        Behavior on radius { NumberAnimation { duration: Theme.motion(220); easing.type: Easing.OutCubic } }
         Behavior on scale { NumberAnimation { duration: Theme.motion(150) } }
         Behavior on color { ColorAnimation { duration: Theme.motion(180) } }
         readonly property color ink: lead || active ? (Theme.light ? Theme.primaryContainer : Theme.onPrimary) : Theme.text

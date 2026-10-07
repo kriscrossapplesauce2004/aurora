@@ -11,7 +11,8 @@ Scope {
     property var connectivity: ({wifi:{items:[],busy:false,error:"",powered:false},bluetooth:{items:[],busy:false,error:"",powered:false}})
     property string controlDetail: ""
     property string settingsSection: ""
-    function openSettings(section) { settingsSection=section||"";page="settings"; }
+    function openSettings(section) { settingsSection=section==="display"||section==="screens" ? "displays" : section||"";page="settings"; }
+
     property bool taskbarContextOpen:false
     property var taskbarContextScreen:null
     property real taskbarContextX:0
@@ -58,11 +59,12 @@ Scope {
     // Wheel input changes the volume but does not open the drawer.
     function audioScroll(steps,screen) {osdScreen=screen||chooseScreen();volume(Math.max(0,Math.min(100,status.volume+steps*2)));}
     property string page: ""
-    onPageChanged:if(page!=="") {closeAudio();closePowerProfile();}
+    // The old convergence page now lives in Settings → Displays.
+    onPageChanged:{if(page==="convergence"){settingsSection="displays";page="settings";return;}if(page!=="") {closeAudio();closePowerProfile();}}
     property string category: "All apps"
     property string query: ""
     property string calculation: ""
-    readonly property bool dnd: Notifier.dnd
+    readonly property bool dnd: polkitMode ? false : Notifier.dnd
     property bool keepAwake: false
     property bool themeBusy: false
     property var wallpaperLibrary: []
@@ -102,6 +104,46 @@ Scope {
     property string clipboardPendingId: ""
     property bool clipboardCloseAfterCopy: true
     property var gameArt: ({})
+    // Console library from game_library.py. Launching sends only the id.
+    // Auto-rotate: only the touch display in phone layout follows the accelerometer.
+    property int orientation: -1
+    function applyOrientation(transform) {
+        // The first reading is a baseline: startup never rewrites a monitor rule unless the device is already turned.
+        const first=orientation<0;
+        const changed=orientation!==transform;
+        orientation=transform;
+        if(prefs.autoRotate===false||prefs.convergeAuto===false||prefs.convergeRotate===false||!changed||first&&transform===0)return;
+        const phone=Quickshell.screens.find(s=>layoutFor(s.width,s.height,s.name)==="phone"&&(!prefs.phoneDisplay||s.name===prefs.phoneDisplay));
+        if(phone)command({action:"rotate",output:phone.name,transform:transform});
+    }
+    // Claude: "!" in search asks the Claude Code CLI. Answers stream in.
+    property int claudeRequest: 0
+    property string claudeAnswer: ""
+    property var claudeTools: []
+    property bool claudeBusy: false
+    property bool claudeError: false
+    function askClaude(text) { const t=text.trim();if(!t)return;claudeRequest++;claudeAnswer="";claudeTools=[];claudeError=false;claudeBusy=true;command({action:"claude-ask",text:t,id:claudeRequest}); }
+    // The assistant panel. Super+A, the Assistant key, Home long-press and "!" in Start open it.
+    function openAssistant(text) {targetScreen=chooseScreen();query="";AssistantState.capture();closeAudio();page="assistant";if(text&&text.trim()!=="")AssistantState.send(text);}
+    function stopClaude() { command({action:"claude-stop"});claudeBusy=false; }
+    // System reports from system_tools.py.
+    property var health: ({disks:[],temperatures:{},hottest:0})
+    property var updates: ({pacman:null,flatpak:null})
+    property var monitors: []
+    property var themeChoices: ({})
+    property var sun: ({sunrise:"07:00",sunset:"19:00",estimated:true})
+    // Opal Link devices and status from opal_link.py.
+    property string linkStatus: "off"
+    property string linkDetail: ""
+    property var linkDevices: []
+    property var linkPairRequest: null
+    function link(action, id, extra) { command(Object.assign({action:"link-"+action,id:id||""},extra||{})); }
+    function appForClass(name) { const c=(name||"").toLowerCase();return c ? apps.find(a=>(a.id||"").toLowerCase()===c||(a.id||"").toLowerCase().endsWith("."+c)||(a.name||"").toLowerCase()===c)||null : null; }
+    property var games: []
+    function launchGame(game) { if(!game)return; command({action:"game-launch",id:game.id}); close(); }
+    function gameRunning(game) { return !!game&&!!game.windowClass&&windows.some(w=>(w.className||"").toLowerCase().startsWith(game.windowClass.toLowerCase())); }
+    function gameWindows(game) { return !game||!game.windowClass ? [] : windows.filter(w=>(w.className||"").toLowerCase().startsWith(game.windowClass.toLowerCase())); }
+    function pinGame(game) { const pins=(prefs.gamePins||[]).slice();const i=pins.indexOf(game.id);if(i>=0)pins.splice(i,1);else pins.unshift(game.id);set("gamePins",pins); }
     function artFor(app) {
         if(!app)return {}
 
@@ -123,7 +165,7 @@ Scope {
     property bool preferencesLoaded: false
     // Normalize desktop entries once; search, taskbar, and window cards all use
     // these indexes instead of scanning the complete application list.
-    property var apps: DesktopEntries.applications.values.filter(a => !a.noDisplay).sort((a,b) => a.name.localeCompare(b.name))
+    property var apps: polkitMode ? [] : DesktopEntries.applications.values.filter(a => !a.noDisplay).sort((a,b) => a.name.localeCompare(b.name))
     readonly property var appIndex: {
         const index=Object.create(null);
         const add=(value,app) => {
@@ -173,13 +215,90 @@ Scope {
         const names=screens.map(s=>s.name);
         const added=screens.filter(s=>knownDisplays.indexOf(s.name)<0);
         knownDisplays=names;
-        if(dockScreen&&names.indexOf(dockScreen.name)<0) {dockNotice=false;dockScreen=null;}
-        if(added.length) {dockScreen=added[added.length-1];dockNotice=true;dockTimer.restart();}
+        if(dockScreen&&names.indexOf(dockScreen.name)<0) {
+            const gone=dockScreen.name;
+            dockNotice=false;dockMenu=false;dockScreen=null;dockResult=null;dockMirrored=false;
+            if(docked&&dockOutput===gone) {
+                docked=false;command({action:"pointer-stop"});phoneDark=false;
+                const next=Object.assign({},sessionModes);delete next[gone];sessionModes=next;
+                message("Undocked. Your apps are back on the phone.");
+            }
+        }
+        if(added.length) {
+            dockScreen=added[added.length-1];dockResult=null;dockMirrored=false;dockMenu=false;
+            command({action:"monitors"});
+            // A remembered choice applies at once; the card only confirms it.
+            const saved=(prefs.dockChoices||{})[dockScreen.name];
+            if(saved)Qt.callLater(()=>{if(dockScreen){dockAs(saved.mode,saved.phoneMode);dockResult=Object.assign({},dockResult||{},{remembered:true});}});
+            dockNotice=true;dockTimer.restart();
+        }
+    }
+    // The full dock menu. The compact card opens it with "More options".
+    property bool dockMenu: false
+    // What convergence did for the new screen: {moved, error, remembered}. The card shows it.
+    property var dockResult: null
+    property bool dockMirrored: false
+    // The convergence controller registers itself here so the card can undo its work.
+    property var convergence: null
+    function dockAs(screenMode,phoneMode) {
+        if(!dockScreen)return;
+        const out=dockScreen.name;
+        const monitor=monitors.find(m=>m.name===out);
+        const phone=phoneMode||phoneDockMode||"trackpad";
+        if(convergence){convergence.disown(out);if(screenMode==="mirror")convergence.revertWindows();}
+        if(dockMirrored&&screenMode!=="mirror"&&monitor)command({action:"monitors-apply",displays:[{name:out,mode:"preferred",x:monitor.x,y:monitor.y,scale:monitor.scale,transform:0,mirror:"none"}],keep:false});
+        dockMirrored=screenMode==="mirror"&&phoneScreen!==null;
+        applyDock({mode:screenMode,phoneMode:phone,apps:[],resolution:"",scale:monitor ? monitor.scale : 1,remember:true});
+        dockNotice=true;dockTimer.restart();
+    }
+    function dockPhoneAs(phoneMode) {
+        if(!dockScreen)return;
+        setPhoneDockMode(phoneMode);docked=phoneScreen!==null;dockOutput=dockScreen.name;
+        const saved=Object.assign({},prefs.dockChoices||{});
+        saved[dockScreen.name]=Object.assign({mode:sessionModes[dockScreen.name]||"desktop",resolution:"",scale:1},saved[dockScreen.name]||{},{phoneMode:phoneMode});
+        set("dockChoices",saved);
     }
     Timer {interval:3000;running:true;onTriggered:{h.knownDisplays=h.displayTopology.slice();h.displaysReady=true;}}
-    Timer {id:dockTimer;interval:30000;onTriggered:h.dockNotice=false}
+    Timer {id:dockTimer;interval:120000;onTriggered:h.dockNotice=false}
     function pauseDockNotice(){if(dockNotice)dockTimer.stop();}
     function resumeDockNotice(){if(dockNotice)dockTimer.restart();}
+    // Docking: the dock menu's choice for a connected screen, and the phone's role while docked.
+    property var sessionModes: ({})
+    property bool docked: false
+    property string dockOutput: ""
+    property string phoneDockMode: "trackpad"
+    property bool phoneDark: false
+    readonly property var phoneScreen: Quickshell.screens.find(s=>(!dockScreen||s.name!==dockScreen.name)&&layoutFor(s.width,s.height,s.name)==="phone")||null
+    // The dock menu runs on the phone display so the new screen stays clean.
+    readonly property var internalScreen: phoneScreen || Quickshell.screens.find(s=>!dockScreen||s.name!==dockScreen.name) || Quickshell.screens[0] || null
+    function setPhoneDockMode(next) {
+        phoneDockMode=next;
+        if(next==="trackpad"&&docked)command({action:"pointer-start",output:dockOutput});
+        else command({action:"pointer-stop"});
+    }
+    function applyDock(choice) {
+        if(!dockScreen)return;
+        const out=dockScreen.name;
+        const phone=phoneScreen ? phoneScreen.name : "";
+        const monitor=monitors.find(m=>m.name===out);
+        if(choice.mode==="mirror"&&phone) {
+            command({action:"monitors-apply",displays:[{name:out,mode:"preferred",x:monitor ? monitor.x : 0,y:monitor ? monitor.y : 0,scale:1,transform:0,mirror:phone}],keep:false});
+        } else {
+            const modes=Object.assign({},sessionModes);modes[out]=choice.mode==="mirror" ? "desktop" : choice.mode;sessionModes=modes;
+            if(monitor&&(choice.resolution&&choice.resolution!=="preferred"||choice.scale!==monitor.scale))
+                command({action:"monitors-apply",displays:[{name:out,mode:choice.resolution&&choice.resolution!=="preferred" ? choice.resolution.replace("Hz","") : monitor.width+"x"+monitor.height+"@"+monitor.refresh.toFixed(2),x:monitor.x,y:monitor.y,scale:choice.scale||1,transform:monitor.transform,mirror:"none"}],keep:false});
+            const target=(status.monitors||[]).find(m=>m.name===out);
+            if(target&&target.workspace>0)(choice.apps||[]).forEach(address=>command({action:"move-window",address:address,number:target.workspace,follow:false}));
+        }
+        if(choice.remember) {
+            const saved=Object.assign({},prefs.dockChoices||{});
+            saved[out]={mode:choice.mode,phoneMode:choice.phoneMode,resolution:choice.resolution||"",scale:choice.scale||1};
+            set("dockChoices",saved);
+        }
+        docked=!!phone;dockOutput=out;dockNotice=false;dockMenu=false;dockTimer.stop();
+        if(phone)setPhoneDockMode(choice.phoneMode||"trackpad");
+        targetScreen=dockScreen;
+    }
     function useDockedWorkspace(phoneScreen) {
         if(!dockScreen)return;
         const overrides=Object.assign({},prefs.displayModes||{});
@@ -233,8 +352,8 @@ Scope {
         set("taskbarOrder",order.concat((prefs.taskbarOrder||[]).filter(k=>order.indexOf(k)<0)).slice(0,128));
     }
     property var recentApps: prefs.recent.map(id => appIndex[String(id).toLowerCase()]).filter(Boolean).slice(0,6)
-    readonly property var inbox: Notifier.inbox
-    readonly property int unread: Notifier.unread
+    readonly property var inbox: polkitMode ? [] : Notifier.inbox
+    readonly property int unread: polkitMode ? 0 : Notifier.unread
     property date now: clock.date
     signal navigate(string key)
     function command(data) { bridge.write(JSON.stringify(data)+"\n"); }
@@ -278,7 +397,10 @@ Scope {
         return "apps";
     }
     function pin(app) { command({action:"pin",id:app.id,initial:favoriteApps.map(a=>a.id)}); }
-    function settings(which) { if(which==="network"||which==="bluetooth") {controlDetail=which==="network" ? "wifi" : which;page="controls";return;} page=""; command({action:"settings",which:which}); }
+    // Session lock. The Opal lock screen owns unlocking through PAM.
+    property bool locked: false
+    function lock() { page=""; locked=true; }
+    function settings(which) { if(which==="lock") {lock();return;} if(which==="network"||which==="bluetooth") {controlDetail=which==="network" ? "wifi" : which;page="controls";return;} page=""; command({action:"settings",which:which}); }
     function volume(value) { value=Math.max(0,Math.min(100,Math.round(value)));command({action:"volume",value:value}); let s=Object.assign({},status); s.volume=value; status=s;showVolumeOsd(); }
     function workspace(n) { if(status.hypr)command({action:"workspace",number:Number(n)}); }
     property var pendingFocus:null
@@ -293,7 +415,7 @@ Scope {
     }}
     function closeWindow(w) {
         if(w.handle) w.handle.close();
-        else if(status.hypr) Quickshell.execDetached(["hyprctl","dispatch","closewindow","address:"+w.address]);
+        else if(status.hypr) command({action:"close-window",address:w.address});
     }
     function displayMode(name,mode) {
         const overrides=Object.assign({},prefs.displayModes||{});
@@ -301,6 +423,8 @@ Scope {
         set("displayModes",overrides);
     }
     function layoutFor(width,height,name) {
+        // A dock choice for this session wins over everything else.
+        if(name&&sessionModes[name])return sessionModes[name];
         if(prefs.mode==="phone"&&name) {
             const phoneName=prefs.phoneDisplay||(Quickshell.screens[0] ? Quickshell.screens[0].name : "");
             return name===phoneName ? "phone" : "desktop";
@@ -315,6 +439,7 @@ Scope {
         const key=String(w.className||"").toLowerCase().replace(/\.desktop$/i,"").trim();
         return appIndex[key]||null;
     }
+    function urgent(w) { return !!w.address&&(status.urgent||[]).indexOf(w.address)>=0; }
     function active(w) { return w.handle ? w.handle.activated : w.address===status.activeAddress; }
     function activateGroup(g) {
         if(!g.windows.length) { if(g.app)launch(g.app);return; }
@@ -322,11 +447,29 @@ Scope {
         focusWindow(g.windows[(index+1)%g.windows.length]);
     }
     // Menu entries: quick entries become large buttons, chip entries share a labelled row, checked entries show a switch.
+    // Phone home layout: pages of widgets and items. An item is an app id or a folder {folder, apps}.
+    readonly property var phoneWidgetKinds:["glance","stack","media","calendar","battery","focus"]
+    readonly property var phoneHome:{
+        const saved=prefs.phoneHome;
+        if(saved&&Array.isArray(saved.pages)&&saved.pages.length)return saved;
+        const ids=favoriteApps.slice(4).map(a=>a.id).concat(recentApps.filter(a=>favoriteApps.indexOf(a)<0).map(a=>a.id)).slice(0,16);
+        return {pages:[{widgets:["glance","stack"],items:ids}]};
+    }
+    function setPhoneHome(layout) { set("phoneHome",{pages:layout.pages.filter((p,i)=>i===0||p.widgets.length||p.items.length)}); }
+    function homeHas(id) { return phoneHome.pages.some(p=>p.items.some(item=>item===id||(item.apps||[]).indexOf(id)>=0)); }
+    function addToHome(app) {
+        if(!app||homeHas(app.id))return;
+        const layout=JSON.parse(JSON.stringify(phoneHome));
+        const last=layout.pages[layout.pages.length-1];
+        if(last.items.length>=24)layout.pages.push({widgets:[],items:[app.id]});else last.items.push(app.id);
+        setPhoneHome(layout);message("Added to Home");
+    }
     function appMenu(app) {
         if(!app)return [];
         const matching=windows.filter(w=>appForWindow(w)===app);
         let entries=[{text:matching.length ? "New window" : "Open",icon:"add",quick:true,run:()=>launchNew(app)},
                      {text:pinned(app) ? "Unpin" : "Pin",icon:pinned(app) ? "keep_off" : "keep",quick:true,run:()=>pin(app)}];
+        if(prefs.mode==="phone"||prefs.mode==="auto")entries.push({text:homeHas(app.id) ? "On Home" : "Add to Home",icon:"add_to_home_screen",run:()=>addToHome(app)});
         if(matching.length) entries.push({text:matching.length===1 ? "Close" : "Close all",icon:"close",quick:true,danger:true,run:()=>matching.forEach(w=>closeWindow(w))});
         (app.actions||[]).forEach(a=>entries.push({text:a.name,icon:"bolt",run:()=>{a.execute();close();}}));
         matching.forEach(w=>entries.push({text:w.title||app.name,detail:w.workspace ? "Workspace "+w.workspace : "",icon:"desktop",run:()=>focusWindow(w)}));
@@ -394,10 +537,23 @@ Scope {
         return matches.map(match => match.app);
     }
     SystemClock { id: clock; precision: SystemClock.Seconds }
+    // Greeter mode: no session backend. Theme roles come from a cache the user session writes.
+    readonly property bool greeterMode: Quickshell.env("OPAL_GREETER") === "1"
+    readonly property bool polkitMode: Quickshell.env("OPAL_POLKIT") === "1"
+    FileView {
+        id: greeterTheme
+        path: h.polkitMode ? (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state") + "/opal/preferences.json" : h.greeterMode ? (Quickshell.env("OPAL_GREETER_THEME") || "/var/cache/opal-greeter/theme.json") : ""
+        watchChanges: h.greeterMode || h.polkitMode
+        onFileChanged: reload()
+        onLoaded: {
+            try { h.prefs = Object.assign({}, h.prefs, JSON.parse(text())); } catch (error) { console.warn("Greeter theme is not valid JSON"); }
+            h.preferencesLoaded = true;
+        }
+    }
     Process {
         id: bridge
         command: ["/usr/local/bin/aurora-opal-bridge"]
-        running: true
+        running: !h.greeterMode && !h.polkitMode
         stdinEnabled: true
         stdout: SplitParser {
             onRead: line => {
@@ -409,6 +565,8 @@ Scope {
                     } else if(e.event === "compositor") {
                         if (e.data.hypr !== undefined) h.compositorActive=!!e.data.hypr;
                         if (e.data.windows !== undefined) h.compositorWindows=e.data.windows;
+                        // A title patch edits one window without a full refresh.
+                        if (e.data.windowTitle) h.compositorWindows=h.compositorWindows.map(w=>w.address===e.data.windowTitle.address ? Object.assign({},w,{title:e.data.windowTitle.title}) : w);
                         h.status=Object.assign({},h.status,e.data);
                     } else if(e.event === "preferences") {
                         h.prefs=e.data;
@@ -423,10 +581,25 @@ Scope {
                         data[e.kind]=Object.assign({},data[e.kind],e);h.connectivity=data;
                     } else if(e.event === "themeBusy") h.themeBusy=e.busy;
                     else if(e.event === "message") h.message(e.text);
+                    else if(e.event === "lock") h.lock();
+                    else if(e.event === "unlock") h.locked=false;
                     else if(e.event === "controller") { h.controller=e.connected;h.controllerName=e.name||""; }
                     else if(e.event === "systemOsk") {h.systemOskAvailable=!!e.available;h.systemOskRunning=!!e.running;h.systemOskVisible=!!e.visible;h.systemOskDetail=e.detail||"";}
                     else if(e.event === "libraryArt") h.gameArt=e.data;
-                    else if(e.event === "navigation" && h.prefs.mode === "console") { if(e.key==="home") h.toggle("launcher"); else if(h.page!=="") h.navigate(e.key); }
+                    else if(e.event === "gameLibrary") h.games=e.data;
+                    else if(e.event === "link") {h.linkStatus=e.status||"off";h.linkDetail=e.detail||"";h.linkDevices=e.devices||[];if(h.linkPairRequest&&!h.linkDevices.some(d=>d.id===h.linkPairRequest.id&&d.pairRequested))h.linkPairRequest=null;}
+                    else if(e.event === "linkPairRequest") h.linkPairRequest={id:e.id,name:e.name,code:e.code};
+                    else if(e.event === "health") h.health={disks:e.disks,temperatures:e.temperatures,hottest:e.hottest};
+                    else if(e.event === "updates") h.updates={pacman:e.pacman,flatpak:e.flatpak};
+                    else if(e.event === "themeChoices") h.themeChoices=e.data||({});
+                    else if(e.event === "recentActivity"||e.event === "torch"||e.event === "batteryStats") PhoneState.ingest(e);
+                    else if(e.event === "monitors") h.monitors=e.data;
+                    else if(e.event === "sun") h.sun={sunrise:e.sunrise,sunset:e.sunset,estimated:e.estimated};
+                    else if(e.event.indexOf("assistant") === 0) AssistantState.ingest(e);
+                    else if(e.event === "claude" && e.id===h.claudeRequest) {h.claudeAnswer=e.text||"";h.claudeTools=e.tools||[];if(e.done){h.claudeBusy=false;h.claudeError=!!e.error;}}
+                    else if(e.event === "orientation") h.applyOrientation(e.transform);
+                    else if(e.event === "navigation") ControllerNav.input(e.key);
+                    else if(e.event === "gamePerf" || e.event === "gameDetail") GameState.receive(e);
                     else if(e.event === "calculation" && e.query===h.calcExpression(h.query)) h.calculation=e.result;
                     else if(e.event === "clipboard") {
                         h.clipboardItems=e.items||[];h.clipboardPaused=!!e.paused;

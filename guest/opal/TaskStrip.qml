@@ -17,7 +17,9 @@ Item {
     property var dragItem:null
     property var groups:[]
     readonly property bool uniformTaskWidth:!labels||width<=500||groups.every(group=>group.windows.length>0)
-    readonly property real taskWidth:labels&&width>500 ? Math.max(100,Math.min(184,width/Math.max(1,repeater.count))) : 44
+    readonly property real taskWidth:islandStyle ? (labels ? 160 : 44) : labels&&width>500 ? Math.max(100,Math.min(184,width/Math.max(1,repeater.count))) : 44
+    // Natural width of all tasks, so a container can hug its content.
+    readonly property real naturalWidth:groups.reduce((sum,g)=>sum+(labels&&g.windows.length>0 ? taskWidth : 44),0)+Math.max(0,groups.length-1)*row.spacing
     readonly property real taskExtent:taskWidth+row.spacing
     Component.onCompleted:groups=Hub.taskGroups
     Connections {target:Hub;function onTaskGroupsChanged(){if(!s.dragging)s.groups=Hub.taskGroups;}}
@@ -59,8 +61,9 @@ Item {
                     required property var modelData
                     required property int index
                     readonly property bool dragged:s.draggingKey===modelData.key
+                    readonly property bool urgent:modelData.windows.some(w=>Hub.urgent(w))
                     readonly property bool focused:modelData.windows.some(w=>Hub.active(w))
-                    readonly property bool labeled:s.labels&&modelData.windows.length>0&&s.width>500
+                    readonly property bool labeled:s.labels&&modelData.windows.length>0&&(s.islandStyle||s.width>500)
                     function openMenu(x,y) {
                         const wins=modelData.windows;const entries=modelData.app ? Hub.appMenu(modelData.app) : wins.length===1 ? Hub.windowMenu(wins[0]) : [{text:"Close all",icon:"close",quick:true,danger:true,run:()=>wins.forEach(w=>Hub.closeWindow(w))}].concat(wins.map(w=>({text:w.title,icon:"desktop",run:()=>Hub.focusWindow(w)})));
                         if(!entries.length)return;
@@ -79,22 +82,20 @@ Item {
                             Behavior on x {NumberAnimation {duration:Theme.motion(180);easing.type:Easing.OutCubic}}
                         }
                         scale:task.dragged ? 1.04 : mouse.pressed ? .96 : 1
-                        rotation:task.dragged&&!Theme.reduceMotion ? (s.dropIndex>=s.sourceIndex ? 1.5 : -1.5) : 0
-                        Behavior on scale {NumberAnimation {duration:Theme.motion(180);easing.type:Easing.OutBack}}
+                        rotation:0
+                        Behavior on scale {NumberAnimation {duration:Theme.motion(180);easing.type:Easing.OutCubic}}
                         Behavior on rotation {NumberAnimation {duration:Theme.motion(180)}}
                         Behavior on x {enabled:!mouse.drag.active;NumberAnimation {duration:Theme.motion(200);easing.type:Easing.OutCubic}}
                         Rectangle {visible:!s.islandStyle;anchors.fill:parent;anchors.margins:2;radius:14;color:task.dragged ? Theme.surfaceHigh : task.focused ? Theme.primaryContainer : mouse.containsMouse ? Theme.alpha(Theme.surfaceHigh,.48) : "transparent";border.width:task.dragged ? 1 : 0;border.color:Theme.primary
                             Behavior on color {ColorAnimation {duration:Theme.motion(140)}}
                         }
-                        // Island style: each app is its own glass bubble. Focus fills it and morphs it to a squircle.
-                        Island {
-                            visible:s.islandStyle
+                        // Island style: apps sit inside the group island. Only the focused app gets a tonal squircle.
+                        Rectangle {
+                            visible:s.islandStyle&&(task.focused||task.dragged)
                             anchors.centerIn:parent
                             width:task.labeled ? parent.width : Math.min(parent.width,parent.height);height:Math.min(parent.width,parent.height)
-                            radius:task.focused&&!task.labeled ? height*.32 : height/2
-                            strong:task.focused
-                            border.color:task.dragged ? Theme.primary : Theme.glassEdge
-                            Behavior on radius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+                            radius:task.labeled ? height/2 : Theme.shapeMd
+                            color:task.dragged ? Theme.level(4) : Theme.primaryContainer
                         }
                         // The halo follows the actual icon centre in both the
                         // compact and labelled taskbar layouts.
@@ -110,16 +111,29 @@ Item {
                             Behavior on scale {NumberAnimation {duration:Theme.motion(170);easing.type:Easing.OutCubic}}
                         }
                         Image {id:taskIcon;x:task.labeled ? 10 : (parent.width-width)/2;anchors.verticalCenter:parent.verticalCenter;width:s.islandStyle&&!task.labeled ? 26 : 24;height:width;sourceSize:Qt.size(48,48);source:Quickshell.iconPath(task.modelData.icon,true)
-                            scale:s.islandStyle&&mouse.containsMouse&&!s.dragging&&!Theme.reduceMotion ? 1.12 : 1
-                            Behavior on scale {NumberAnimation {duration:Theme.motion(220);easing.type:Easing.OutBack}}
+                            scale:1
+                            Behavior on scale {NumberAnimation {duration:Theme.motion(220);easing.type:Easing.OutCubic}}
                         }
                         Glyph {visible:taskIcon.status!==Image.Ready;x:taskIcon.x;anchors.verticalCenter:parent.verticalCenter;name:Hub.glyphForApp(task.modelData.app);font.pixelSize:24;color:s.islandStyle ? (Theme.light ? Theme.containerInk : Theme.primary) : Theme.primary}
-                        MText {visible:task.labeled;x:42;width:parent.width-58;anchors.verticalCenter:parent.verticalCenter;text:task.modelData.windows.length===1 ? task.modelData.windows[0].title : task.modelData.name;font.pixelSize:12;color:task.focused ? Theme.onContainer : Theme.text}
+                        MText {visible:task.labeled;x:42;width:parent.width-58;anchors.verticalCenter:parent.verticalCenter;text:task.modelData.windows.length===1 ? task.modelData.windows[0].title : task.modelData.name;font.pixelSize:12;color:task.focused ? Theme.onContainer : Theme.text;role:"label"}
                         Rectangle {visible:task.modelData.windows.length>1;anchors.right:parent.right;anchors.top:parent.top;anchors.rightMargin:1;width:16;height:16;radius:8;color:Theme.primaryContainer;border.width:1;border.color:Theme.outline
                             MText {anchors.centerIn:parent;text:Math.min(99,task.modelData.windows.length);font.pixelSize:9;font.weight:Font.Bold;color:Theme.onContainer}
                         }
                         Rectangle {visible:task.modelData.windows.length>0;anchors.bottom:parent.bottom;anchors.bottomMargin:s.islandStyle ? 3 : 2;anchors.horizontalCenter:parent.horizontalCenter;width:task.focused ? 14 : 4;height:s.islandStyle ? 3 : 3;radius:2;color:s.islandStyle ? (Theme.light ? Theme.containerInk : Theme.primary) : Theme.primary
-                            Behavior on width {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+                            Behavior on width {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
+                        }
+                        // Urgent windows get an error dot that breathes slowly; reduced motion keeps it still.
+                        Rectangle {
+                            id:urgentDot
+                            visible:task.urgent&&!task.focused
+                            anchors.right:parent.right;anchors.top:parent.top;anchors.rightMargin:task.labeled ? 8 : 6;anchors.topMargin:6
+                            width:10;height:10;radius:5;color:Theme.error;border.width:1;border.color:Theme.surface
+                            SequentialAnimation on opacity {
+                                running:urgentDot.visible&&!Theme.reduceMotion;loops:Animation.Infinite
+                                NumberAnimation {to:.45;duration:900;easing.type:Easing.InOutSine}
+                                NumberAnimation {to:1;duration:900;easing.type:Easing.InOutSine}
+                            }
+                            Accessible.role:Accessible.Indicator;Accessible.name:"Needs attention"
                         }
                         MouseArea {
                             id:mouse;anchors.fill:parent;hoverEnabled:true;acceptedButtons:Qt.LeftButton|Qt.RightButton

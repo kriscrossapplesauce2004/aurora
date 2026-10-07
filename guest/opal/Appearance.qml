@@ -18,7 +18,7 @@ Flickable {
             Wallpaper {anchors.fill:parent;showWidgets:false}
             MButton {anchors {right:parent.right;bottom:parent.bottom;margins:14} icon:"palette";text:"Wallpaper studio";filled:true;onClicked:Hub.page="wallpaper"}
         }
-        MText {Layout.fillWidth:true;text:"Browse a local gallery, preview your own images and explore Opal’s built-in collection. Nothing changes until you apply.";wrapMode:Text.Wrap;font.pixelSize:12;color:Theme.subtext}
+        MText {Layout.fillWidth:true;text:"Pick an image. Nothing changes until you apply.";wrapMode:Text.Wrap;font.pixelSize:12;color:Theme.subtext}
         MText {text:"COLOR & MOOD";font.pixelSize:10;font.letterSpacing:2;color:Theme.subtext}
         RowLayout {Layout.fillWidth:true;spacing:10
             Repeater {model:Theme.palettes
@@ -42,7 +42,7 @@ text:modelData.name;color:modelData.onPrimary;font.pixelSize:12;font.weight:Font
             }
         }
         MButton {visible:!!Hub.prefs.dynamicPalette&&!!Hub.prefs.dynamicPalette.dark;Layout.fillWidth:true;text:a.dynamicColorsEnabled ? "Wallpaper colors on" : "Use saved wallpaper colors";tonal:true;icon:"check";onClicked:Hub.set("dynamicColors",!a.dynamicColorsEnabled)}
-        MText {Layout.fillWidth:true;text:"Local images only. Generate after changing image or scheme. Matugen colors only Opal — no app reloads or external theme hooks.";wrapMode:Text.Wrap;color:Theme.subtext;font.pixelSize:11}
+        MText {Layout.fillWidth:true;text:"Colors come from your wallpaper.";wrapMode:Text.Wrap;color:Theme.subtext;font.pixelSize:11}
         RowLayout {Layout.fillWidth:true;spacing:8
             MButton {Layout.fillWidth:true;icon:"moon";text:"Dark";filled:!Theme.light;tonal:Theme.light;onClicked:Hub.set("light",false)}
             MButton {Layout.fillWidth:true;icon:"sun";text:"Light";filled:Theme.light;tonal:!Theme.light;onClicked:Hub.set("light",true)}
@@ -50,6 +50,14 @@ text:modelData.name;color:modelData.onPrimary;font.pixelSize:12;font.weight:Font
         MText {text:"GLASS & MATERIAL";font.pixelSize:10;font.letterSpacing:2;color:Theme.subtext}
         MText {text:"Panel density · "+Math.round(Hub.prefs.glass*100)+"%";color:Theme.subtext}
         ExpressiveSlider {Layout.fillWidth:true;from:45;to:100;value:Hub.prefs.glass*100;icon:"sun";onMoved:Hub.set("glass",Math.round(value)/100)}
+        MText {text:"APP ICONS";font.pixelSize:10;font.letterSpacing:2;color:Theme.subtext}
+        SegmentedButtons {Layout.fillWidth:true;current:Hub.prefs.iconStyle||"raw"
+            options:[{value:"raw",label:"Original",icon:"apps"},{value:"squircle",label:"Backplate",icon:"rounded_corner"},{value:"themed",label:"Themed",icon:"palette"}]
+            onPicked:value=>Hub.set("iconStyle",value)}
+        MText {text:"BAR";font.pixelSize:10;font.letterSpacing:2;color:Theme.subtext}
+        SegmentedButtons {Layout.fillWidth:true;current:Hub.prefs.barStyle||"islands"
+            options:[{value:"islands",label:"Islands",icon:"view_column"},{value:"dock",label:"Dock",icon:"call_to_action"},{value:"split",label:"Split",icon:"splitscreen"},{value:"edge",label:"Edge",icon:"bottom_navigation"}]
+            onPicked:value=>Hub.set("barStyle",value)}
         MText {text:"LAYOUT";font.pixelSize:10;font.letterSpacing:2;color:Theme.subtext}
         Repeater {model:a.layoutModes
             Rectangle {required property var modelData;Layout.fillWidth:true;height:84;radius:24;color:Hub.prefs.mode===modelData.id ? Theme.primaryContainer : Theme.alpha(Theme.surface,.6)
@@ -70,6 +78,6 @@ text:modelData.name;color:modelData.onPrimary;font.pixelSize:12;font.weight:Font
             MButton {Layout.fillWidth:true;text:"Standard / Xbox";filled:Hub.prefs.controllerLayout!=="nintendo";tonal:Hub.prefs.controllerLayout==="nintendo";onClicked:Hub.set("controllerLayout","standard")}
             MButton {Layout.fillWidth:true;text:"Nintendo";filled:Hub.prefs.controllerLayout==="nintendo";tonal:Hub.prefs.controllerLayout!=="nintendo";onClicked:Hub.set("controllerLayout","nintendo")}
         }
-        MText {Layout.fillWidth:true;text:"Changes save automatically. Blur comes from your compositor; all colors, layouts and transparency are shell-local.";wrapMode:Text.Wrap;color:Theme.muted;font.pixelSize:11}
+        MText {Layout.fillWidth:true;text:"Changes save automatically.";wrapMode:Text.Wrap;color:Theme.muted;font.pixelSize:11}
     }
 }

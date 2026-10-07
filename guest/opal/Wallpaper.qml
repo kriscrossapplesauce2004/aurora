@@ -16,6 +16,7 @@ Item {
         id:widgets
         active:w.showWidgets
         x:20;y:Math.max(24,w.height*.035);width:Math.min(270,w.width-40)
-        sourceComponent:Component {DesktopWidgets {width:widgets.width;backdrop:photo;tall:w.height>=820;available:w.height-widgets.y-80}}
+        sourceComponent:classicWidgets
     }
+    Component {id:classicWidgets;DesktopWidgets {width:widgets.width;backdrop:photo;tall:w.height>=820;available:w.height-widgets.y-80}}
 }

@@ -10,10 +10,10 @@ Item {
     readonly property bool narrow:width<620
     property bool embedded:false
     readonly property var modes:[
-        {id:"auto",title:"Flow",icon:"auto_awesome",tag:"Adaptive",description:"Every screen finds its own fit: a touch home on small and portrait displays, a workspace on larger ones."},
-        {id:"desktop",title:"Workspace",icon:"desktop_windows",tag:"Desktop",description:"Windows up front, with the shelf, instant search and the control panel a click away."},
-        {id:"phone",title:"Touch",icon:"smartphone",tag:"Phone and tablet",description:"Edge-to-edge home, reachable controls and gesture navigation. Rotate for a two-column home."},
-        {id:"console",title:"Play",icon:"sports_esports",tag:"Controller",description:"A game-first library with large artwork, D-pad navigation and a session that keeps interruptions out."}
+        {id:"auto",title:"Flow",icon:"auto_awesome",tag:"Adaptive",description:"Each screen picks touch or desktop by its size."},
+        {id:"desktop",title:"Workspace",icon:"desktop_windows",tag:"Desktop",description:"Windows, a bar and search."},
+        {id:"phone",title:"Touch",icon:"smartphone",tag:"Phone and tablet",description:"A touch home with big targets."},
+        {id:"console",title:"Play",icon:"sports_esports",tag:"Controller",description:"Your games, controller first."}
     ]
     readonly property var choice:modes.find(m=>m.id===selected)||modes[0]
     readonly property var screenFocus:Quickshell.screens.find(s=>s.name===focusScreen)||Quickshell.screens[0]||null
@@ -50,7 +50,7 @@ Item {
                             radius:picked ? 32 : 20
                             color:picked ? Theme.primaryContainer : Theme.alpha(Theme.light ? "#ffffff" : Theme.glassRaised,Theme.light ? .75 : .55)
                             scale:cardMouse.pressed ? .97 : 1
-                            Behavior on radius {NumberAnimation {duration:Theme.motion(300);easing.type:Easing.OutBack}}
+                            Behavior on radius {NumberAnimation {duration:Theme.motion(300);easing.type:Easing.OutCubic}}
                             Behavior on color {ColorAnimation {duration:Theme.motion(200)}}
                             Behavior on scale {NumberAnimation {duration:Theme.motion(140)}}
                             Rectangle {anchors.fill:parent;radius:parent.radius;color:Theme.stateLayer;opacity:cardMouse.containsMouse&&!card.picked ? .06 : 0}
@@ -141,13 +141,15 @@ Item {
                     }
                 }
 
+                MText {text:"Automatic";font.pixelSize:12;font.weight:Font.Medium;color:Theme.primary;Layout.leftMargin:6;Layout.topMargin:10}
+                ConvergenceSettings {Layout.fillWidth:true}
                 MText {text:"Feel";font.pixelSize:12;font.weight:Font.Medium;color:Theme.primary;Layout.leftMargin:6;Layout.topMargin:10}
                 SettingToggle {Layout.fillWidth:true;first:true;last:false;icon:"animation";title:"Expressive motion";description:"Springy shape and panel transitions.";checked:!Theme.reduceMotion;onToggled:Hub.set("reduceMotion",!Theme.reduceMotion)}
                 SettingToggle {Layout.fillWidth:true;first:false;last:false;icon:"swipe";title:"Gesture navigation";description:"Touch layouts use a gesture strip instead of buttons.";checked:!Hub.prefs.phoneButtons;onToggled:Hub.set("phoneButtons",!Hub.prefs.phoneButtons)}
                 SettingToggle {Layout.fillWidth:true;first:false;last:true;icon:"vertical_align_bottom";title:"Hide the shelf automatically";checked:!!Hub.prefs.taskbarAutoHide;onToggled:Hub.set("taskbarAutoHide",!Hub.prefs.taskbarAutoHide)}
                 MText {text:"Glass · "+Math.round(Hub.prefs.glass*100)+"%";font.pixelSize:12;font.weight:Font.Medium;color:Theme.primary;Layout.leftMargin:6;Layout.topMargin:10}
                 ExpressiveSlider {Layout.fillWidth:true;implicitHeight:58;compact:true;trackHeight:46;icon:"opacity";iconAtHandle:true;from:45;to:100;value:Hub.prefs.glass*100;onMoved:Hub.set("glass",Math.round(value)/100)}
-                MText {Layout.fillWidth:true;Layout.topMargin:6;text:"A new display gets a short docking welcome. Positions, mirroring and resolution stay with the compositor; USB-C display-out needs compatible hardware.";wrapMode:Text.Wrap;font.pixelSize:11;color:Theme.subtext}
+                MText {Layout.fillWidth:true;Layout.topMargin:6;text:"New displays get a quick setup prompt.";wrapMode:Text.Wrap;font.pixelSize:11;color:Theme.subtext}
             }
         }
         MButton {
@@ -156,51 +158,5 @@ Item {
             text:c.selected===Hub.prefs.mode ? c.choice.title+" is in use" : "Switch to "+c.choice.title
             onClicked:if(c.selected!==Hub.prefs.mode)Hub.mode(c.selected)
         }
-    }
-
-    // Layout miniature: simple shapes, coloured by theme roles, animated when picked.
-    component ModeArt: Item {
-        id:art
-        property string mode:"auto"
-        property bool active:false
-        readonly property color ink:active ? Theme.onContainer : Theme.primary
-        readonly property color soft:Theme.alpha(ink,.18)
-        // Workspace, Flow and Play share a landscape frame.
-        Rectangle {
-            visible:art.mode!=="phone"
-            width:Math.min(parent.width*(art.mode==="auto" ? .78 : .92),parent.height*1.6);height:width*.62
-            anchors.verticalCenter:parent.verticalCenter;x:art.mode==="auto" ? 0 : (parent.width-width)/2
-            radius:8;color:"transparent";border.width:2;border.color:art.ink
-            Row {
-                visible:art.mode!=="console";anchors.left:parent.left;anchors.top:parent.top;anchors.margins:7;spacing:4
-                Rectangle {width:(parent.parent.width-18)*.55;height:parent.parent.height-26;radius:4;color:art.soft}
-                Rectangle {width:(parent.parent.width-18)*.45;height:parent.parent.height-26;radius:4;color:art.soft;opacity:.6}
-            }
-            Row {
-                visible:art.mode!=="console";anchors.bottom:parent.bottom;anchors.bottomMargin:4;anchors.horizontalCenter:parent.horizontalCenter;spacing:3
-                Repeater {model:5;Rectangle {width:6;height:6;radius:3;color:art.ink;opacity:index===1 ? 1 : .5}}
-            }
-            Grid {
-                visible:art.mode==="console";anchors.centerIn:parent;columns:3;spacing:4
-                Repeater {model:6;Rectangle {width:(art.width*.92-34)/3*.9;height:width*.62;radius:4;color:index===0&&art.active ? art.ink : art.soft
-                    scale:index===0&&art.active&&!Theme.reduceMotion ? 1.08 : 1;Behavior on scale {NumberAnimation {duration:Theme.motion(300);easing.type:Easing.OutBack}}}}
-            }
-        }
-        // Touch and Flow show a phone.
-        Rectangle {
-            visible:art.mode==="phone"||art.mode==="auto"
-            height:parent.height*(art.mode==="phone" ? .98 : .78);width:height*.5
-            anchors.verticalCenter:parent.verticalCenter
-            x:art.mode==="phone" ? (parent.width-width)/2 : parent.width-width
-            radius:width*.18;color:art.mode==="auto" ? (art.active ? Theme.primaryContainer : Theme.base) : "transparent";border.width:2;border.color:art.ink
-            Grid {
-                anchors.horizontalCenter:parent.horizontalCenter;y:parent.height*.2;columns:3;spacing:3
-                Repeater {model:6;Rectangle {width:(art.height*.4-12)/3*(art.mode==="phone" ? 1.1 : .8);height:width;radius:width/2;color:art.soft}}
-            }
-            Rectangle {anchors.bottom:parent.bottom;anchors.bottomMargin:5;anchors.horizontalCenter:parent.horizontalCenter;width:parent.width*.4;height:3;radius:1.5;color:art.ink}
-        }
-        // Flow: an arrow suggests the layout moving between screens.
-        Glyph {visible:art.mode==="auto";anchors.centerIn:parent;anchors.horizontalCenterOffset:parent.width*.06;name:"sync_alt";font.pixelSize:18;color:art.ink
-            rotation:art.active&&!Theme.reduceMotion ? 180 : 0;Behavior on rotation {NumberAnimation {duration:Theme.motion(600);easing.type:Easing.OutBack}}}
     }
 }

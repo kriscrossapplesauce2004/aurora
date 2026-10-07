@@ -9,6 +9,8 @@ Item {
     // 0 is home, 1 is the open drawer.
     property real progress:0
     property bool dragging:false
+    // Settle time follows the release speed, so a fast flick finishes fast.
+    property int settleMs:380
     readonly property bool recents:Hub.mobileTab==="recent"&&!embedded
     function go(tab) {
         if(tab==="apps"){openDrawer(false);return;}
@@ -37,8 +39,15 @@ Item {
             else if(Hub.mobileTab!=="apps"&&mobile.progress>0){settle.to=0;settle.restart();}
         }
     }
+    // The navigation pill drives the drawer with the finger when the home screen is in front.
+    Connections {
+        target:PhoneState
+        enabled:mobile.embedded ? Hub.page==="" : Hub.page==="launcher"
+        function onProgressChanged() {if(PhoneState.phase==="drawer"){settle.stop();mobile.dragging=true;mobile.progress=PhoneState.progress;}}
+        function onDrawerReleased(open) {mobile.dragging=false;mobile.settleMs=Math.round(Math.max(180,Math.min(420,(open ? 1-mobile.progress : mobile.progress)*mobile.height/Math.max(700,Math.abs(PhoneState.velocityY))*1000)));if(open)mobile.openDrawer(false);else {settle.to=0;settle.restart();}}
+    }
     NumberAnimation {
-        id:settle;target:mobile;property:"progress";duration:Theme.motion(380)
+        id:settle;target:mobile;property:"progress";duration:Theme.motion(mobile.settleMs)
         easing.type:Easing.BezierSpline;easing.bezierCurve:Theme.emphasizedDecelerate
         onFinished:{
             if(to===0&&!mobile.embedded&&Hub.mobileTab==="apps"){Hub.query="";Hub.mobileTab="home";if(Hub.page==="launcher")Hub.close();}
@@ -46,15 +55,20 @@ Item {
     }
 
     // Home recedes as the drawer rises.
-    PhoneHome {
+    Loader {
         id:homeLayer
         anchors.fill:parent
         visible:mobile.progress<1&&!mobile.recents
         opacity:1-mobile.progress*.7
         scale:1-mobile.progress*.06
-        onDragProgress:value=>{settle.stop();mobile.dragging=true;mobile.progress=value;}
-        onDragFinished:open=>{mobile.dragging=false;if(open)mobile.openDrawer(false);else {settle.to=0;settle.restart();}}
-        onOpenDrawer:search=>mobile.openDrawer(search)
+        sourceComponent:classicHome
+    }
+    Component {id:classicHome;PhoneHome {}}
+    Connections {
+        target:homeLayer.item
+        function onDragProgress(value) {settle.stop();mobile.dragging=true;mobile.progress=value;}
+        function onDragFinished(open) {mobile.dragging=false;mobile.settleMs=380;if(open)mobile.openDrawer(false);else {settle.to=0;settle.restart();}}
+        function onOpenDrawer(search) {mobile.openDrawer(search);}
     }
     Rectangle {anchors.fill:parent;color:"#000000";opacity:mobile.progress*.28;visible:opacity>0}
     PhoneDrawer {

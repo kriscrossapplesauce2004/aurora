@@ -26,7 +26,7 @@ Rectangle {
     implicitWidth: Math.max(compact ? 42 : 48, content.implicitWidth + (compact ? 24 : 32))
     implicitHeight: compact ? 38 : 48
     // Original expressive pills: soft at rest, gently compressed on press.
-    radius: mouse.pressed ? 14 : morph&&checked ? Math.min(18,height*.30) : height/2
+    radius: mouse.pressed ? Math.min(height/2,Theme.shapeMd) : morph&&checked ? Math.min(18,height*.30) : height/2
     color: filled ? accent : highlighted ? Theme.surfaceHigh : contained ? Theme.alpha(Theme.surfaceHigh,.48) : tonal ? Theme.primaryContainer : "transparent"
     readonly property color contentInk: filled ? fillInk : tonal ? Theme.onContainer : ink
     // M3 state layer: the content colour at 8% for hover and 12% for press.
@@ -60,8 +60,8 @@ Rectangle {
         visible: a.activeFocus
     }
     opacity: enabled ? 1 : 0.35
-    scale: mouse.pressed ? 0.96 : 1
-    Behavior on radius { NumberAnimation { duration: Theme.motion(220); easing.type: Easing.OutBack } }
+    scale: 1
+    Behavior on radius { NumberAnimation { duration: Theme.motion(220); easing.type: Easing.OutCubic } }
     Behavior on scale { NumberAnimation { duration: Theme.motion(180); easing.type: Easing.OutCubic } }
     Behavior on color { ColorAnimation { duration: Theme.motion(160) } }
     // Opt-in only: taskbar icon targets get a centred halo, rather than a
@@ -86,6 +86,7 @@ Rectangle {
         MText { visible:a.text!==""; text:a.text; textFormat:Text.PlainText; Layout.fillWidth:true; elide:Text.ElideRight; color:a.filled ? a.fillInk : a.tonal ? Theme.onContainer : a.ink; font.pixelSize:a.compact ? 12 : 14; font.weight:Font.DemiBold }
     }
     activeFocusOnTab: true
+    function controllerActivate() { clicked(); }
     Keys.onReturnPressed: clicked()
     Keys.onSpacePressed: clicked()
     // Keep the Popup in its original coordinate space while avoiding menu-item
@@ -103,7 +104,7 @@ Rectangle {
             if(delta)a.scrolled(delta>0 ? 1 : -1);
             e.accepted=delta!==0;
         }
-        onPressed:{held=false;if(!Theme.reduceMotion)pulseAnimation.restart();}
+        onPressed:held=false
         onClicked:e=>{if(held)return;if(e.button===Qt.RightButton){if(a.menuEntries.length)buttonMenu.item.popupFrom(a,e.x,e.y);else a.contextRequested(e.x,e.y);}else a.clicked();}
         onPressAndHold:e=>{if(a.menuEntries.length){held=true;buttonMenu.item.popupFrom(a,e.x,e.y);}}
     }

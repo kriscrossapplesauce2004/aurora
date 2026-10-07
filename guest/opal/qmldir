@@ -1,6 +1,8 @@
 singleton Theme 1.0 Theme.qml
 singleton Hub 1.0 Hub.qml
 singleton Notifier 1.0 Notifier.qml
+singleton ControllerNav 1.0 ControllerNav.qml
+singleton GameState 1.0 GameState.qml
 NotificationCard 1.0 NotificationCard.qml
 NotificationCenter 1.0 NotificationCenter.qml
 AppTile 1.0 AppTile.qml
@@ -71,3 +73,66 @@ PhoneRecents 1.0 PhoneRecents.qml
 PhoneAppIcon 1.0 PhoneAppIcon.qml
 SmartStack 1.0 SmartStack.qml
 ContinuityStrip 1.0 ContinuityStrip.qml
+TopBar 1.0 TopBar.qml
+NotificationGroups 1.0 NotificationGroups.qml
+MSwitch 1.0 MSwitch.qml
+AppIcon 1.0 AppIcon.qml
+WorkspacePill 1.0 WorkspacePill.qml
+LockScene 1.0 LockScene.qml
+LockScreen 1.0 LockScreen.qml
+PolkitDialog 1.0 PolkitDialog.qml
+PolkitCard 1.0 PolkitCard.qml
+GreeterController 1.0 GreeterController.qml
+LockController 1.0 LockController.qml
+GameCover 1.0 GameCover.qml
+PhoneWidget 1.0 PhoneWidget.qml
+SystemServices 1.0 SystemServices.qml
+SettingsScreens 1.0 SettingsScreens.qml
+SettingsAppTheme 1.0 SettingsAppTheme.qml
+SettingsProfiles 1.0 SettingsProfiles.qml
+SettingsSchedules 1.0 SettingsSchedules.qml
+SettingsSystem 1.0 SettingsSystem.qml
+Onboarding 1.0 Onboarding.qml
+LinkDevices 1.0 LinkDevices.qml
+SettingsLink 1.0 SettingsLink.qml
+ModeArt 1.0 ModeArt.qml
+DockScene 1.0 DockScene.qml
+DockWindow 1.0 DockWindow.qml
+PhoneDock 1.0 PhoneDock.qml
+PhoneDockPanel 1.0 PhoneDockPanel.qml
+DockTrackpad 1.0 DockTrackpad.qml
+LayoutMorph 1.0 LayoutMorph.qml
+UndoToast 1.0 UndoToast.qml
+ConvergenceSettings 1.0 ConvergenceSettings.qml
+ConvergenceController 1.0 ConvergenceController.qml
+singleton PhoneState 1.0 PhoneState.qml
+singleton AssistantState 1.0 AssistantState.qml
+AssistantChip 1.0 AssistantChip.qml
+AssistantPanel 1.0 AssistantPanel.qml
+AssistantWindow 1.0 AssistantWindow.qml
+PhoneGestureLayer 1.0 PhoneGestureLayer.qml
+GestureCard 1.0 GestureCard.qml
+PenWatcher 1.0 PenWatcher.qml
+TaskAwareSection 1.0 TaskAwareSection.qml
+PhoneTabletDock 1.0 PhoneTabletDock.qml
+SplitDivider 1.0 SplitDivider.qml
+PhoneTorch 1.0 PhoneTorch.qml
+LockExtras 1.0 LockExtras.qml
+AmbientClock 1.0 AmbientClock.qml
+BatteryStats 1.0 BatteryStats.qml
+GestureStage 1.0 GestureStage.qml
+TabletDockTray 1.0 TabletDockTray.qml
+ControllerFocus 1.0 ControllerFocus.qml
+ControllerHints 1.0 ControllerHints.qml
+QaRow 1.0 QaRow.qml
+QuickAccess 1.0 QuickAccess.qml
+RoundedImage 1.0 RoundedImage.qml
+GameDetail 1.0 GameDetail.qml
+singleton Activities 1.0 Activities.qml
+ActivityPill 1.0 ActivityPill.qml
+ActivitySegment 1.0 ActivitySegment.qml
+SuggestionChips 1.0 SuggestionChips.qml
+MorphChip 1.0 MorphChip.qml
+AssistantSteps 1.0 AssistantSteps.qml
+TabletBar 1.0 TabletBar.qml
+ChoiceGroup 1.0 ChoiceGroup.qml

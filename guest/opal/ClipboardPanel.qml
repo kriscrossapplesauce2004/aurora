@@ -30,7 +30,7 @@ spacing:14
             Flower {Layout.preferredWidth:48;Layout.preferredHeight:48;fill:Theme.primary;lobes:8;Glyph {anchors.centerIn:parent;name:"clipboard";color:Theme.onPrimary;font.pixelSize:24}}
             ColumnLayout {Layout.fillWidth:true;spacing:4
                 MText {text:"Clipboard";font.pixelSize:27;font.weight:Font.DemiBold}
-                MText {text:Hub.clipboardItems.length+" of 20 entries · session only";color:Theme.subtext;font.pixelSize:11}
+                MText {text:Hub.clipboardItems.length+" items";color:Theme.subtext;font.pixelSize:11}
             }
             MButton {icon:"close";compact:true;tooltip:"Close · Escape";onClicked:Hub.close()}
         }
@@ -54,7 +54,7 @@ icon:"close";compact:true;implicitWidth:34;implicitHeight:34;tooltip:"Clear sear
         RowLayout {Layout.fillWidth:true;spacing:8
             Rectangle {Layout.preferredWidth:8;Layout.preferredHeight:8;radius:4;color:Hub.clipboardPaused ? Theme.tertiary : Hub.clipboardAvailable ? Theme.secondary : Theme.muted}
             MText {text:Hub.clipboardPaused ? "History paused" : Hub.clipboardAvailable ? "Ready for the next good idea" : "Clipboard service unavailable";color:Theme.subtext;font.pixelSize:11;Layout.fillWidth:true}
-            MButton {text:Hub.clipboardPaused ? "Resume" : "Pause";icon:Hub.clipboardPaused ? "play" : "pause";compact:true;tonal:true;tooltip:"Pause stops Opal’s clipboard watcher";onClicked:Hub.pauseClipboard()}
+            MButton {text:Hub.clipboardPaused ? "Resume" : "Pause";icon:Hub.clipboardPaused ? "play" : "pause";compact:true;tonal:true;tooltip:"Pause clipboard history";onClicked:Hub.pauseClipboard()}
         }
         ListView {
             id:clipList;Layout.fillWidth:true;Layout.fillHeight:true
@@ -93,7 +93,7 @@ icon:"close";compact:true;implicitWidth:34;implicitHeight:34;tooltip:"Clear sear
 spacing:16
             Glyph {name:"trash";font.pixelSize:42;color:Theme.tertiary;Layout.alignment:Qt.AlignHCenter}
             MText {text:"Clear this little history?";Layout.fillWidth:true;wrapMode:Text.Wrap;horizontalAlignment:Text.AlignHCenter;font.pixelSize:25;font.weight:Font.DemiBold}
-            MText {text:"Only Opal’s in-memory entries will be removed. Your current clipboard and other clipboard managers are untouched.";Layout.fillWidth:true;wrapMode:Text.Wrap;horizontalAlignment:Text.AlignHCenter;color:Theme.subtext;font.pixelSize:13}
+            MText {text:"Clears the history. What you copied last stays copied.";Layout.fillWidth:true;wrapMode:Text.Wrap;horizontalAlignment:Text.AlignHCenter;color:Theme.subtext;font.pixelSize:13}
             MButton {Layout.fillWidth:true;text:"Clear "+Hub.clipboardItems.length+" entries";filled:true;onClicked:{Hub.clearClipboard();cp.confirmingClear=false;}}
             MButton {Layout.fillWidth:true;text:"Keep them";tonal:true;onClicked:cp.confirmingClear=false}
         }

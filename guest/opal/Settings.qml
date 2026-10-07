@@ -17,18 +17,23 @@ Item {
     readonly property var groups:[
         {title:"Connections",items:[
             {id:"network",title:"Network & internet",icon:"wifi",detail:"Wi-Fi and saved networks"},
-            {id:"bluetooth",title:"Connected devices",icon:"bluetooth",detail:"Bluetooth and pairing"}]},
+            {id:"bluetooth",title:"Connected devices",icon:"bluetooth",detail:"Bluetooth and pairing"},
+            {id:"link",title:"Opal Link",icon:"devices",detail:"Your phone and other Opal devices"}]},
         {title:"Device",items:[
             {id:"sound",title:"Sound",icon:"volume",detail:"Volume, outputs and microphone"},
-            {id:"display",title:"Displays & convergence",icon:"convergence",detail:"Layouts for every screen"},
+            {id:"displays",title:"Displays",icon:"monitor",detail:"Arrangement, docking and what each screen becomes"},
             {id:"power",title:"Battery & power",icon:"battery",detail:"Profiles and staying awake"}]},
         {title:"Personal",items:[
             {id:"appearance",title:"Wallpaper & style",icon:"palette",detail:"Colours, wallpaper and glass"},
             {id:"taskbar",title:"Shelf",icon:"desktop",detail:"Alignment, labels and hiding"},
             {id:"phone",title:"Phone & navigation",icon:"phone",detail:"Gestures, buttons and keyboard"},
-            {id:"notifications",title:"Notifications",icon:"bell",detail:"Do not disturb and inbox"}]},
+            {id:"notifications",title:"Notifications",icon:"bell",detail:"Do not disturb and inbox"},
+            {id:"schedules",title:"Night light & schedules",icon:"nightlight",detail:"Warm screen, dark theme and quiet hours"},
+            {id:"apptheme",title:"Theme for apps",icon:"format_paint",detail:"GTK, Kitty, Qt and window borders"},
+            {id:"profiles",title:"Profiles",icon:"style",detail:"Save and switch whole setups"}]},
         {title:"System",items:[
             {id:"accessibility",title:"Accessibility",icon:"accessibility_new",detail:"Motion and readable surfaces"},
+            {id:"system",title:"Updates & health",icon:"system_update",detail:"Updates, storage and temperatures"},
             {id:"about",title:"About this device",icon:"info",detail:"System, shell and live usage"}]}
     ]
     readonly property var sections:groups.reduce((all,g)=>all.concat(g.items),[])
@@ -41,6 +46,9 @@ Item {
     function badge(index) {return [Theme.primaryContainer,Theme.secondaryContainer,Theme.tertiaryContainer,Theme.surfaceHighest][index%4];}
     function badgeInk(index) {return [Theme.onContainer,Theme.onSecondaryContainer,Theme.onTertiaryContainer,Theme.text][index%4];}
     function groupIndex(id) {return groups.findIndex(g=>g.items.some(i=>i.id===id));}
+    // Controller: LB and RB step through sections. B returns to the overview first.
+    function controllerTab(delta) {const ids=sections.map(s=>s.id);const i=ids.indexOf(Hub.settingsSection);Hub.settingsSection=ids[i<0 ? (delta>0 ? 0 : ids.length-1) : (i+delta+ids.length)%ids.length];}
+    function controllerBack() {if(Hub.settingsSection==="")return false;Hub.settingsSection="";return true;}
 
     RowLayout {
         anchors.fill:parent;anchors.margins:settings.narrow ? 14 : 20;spacing:20
@@ -117,7 +125,7 @@ Item {
                 Loader {
                     id:page
                     Layout.fillWidth:true;Layout.fillHeight:true
-                    sourceComponent:Hub.settingsSection==="" ? overviewPage : Hub.settingsSection==="network"||Hub.settingsSection==="bluetooth" ? connectionPage : Hub.settingsSection==="appearance" ? stylePage : Hub.settingsSection==="display" ? displayPage : Hub.settingsSection==="sound" ? soundPage : optionsPage
+                    sourceComponent:Hub.settingsSection==="" ? overviewPage : Hub.settingsSection==="network"||Hub.settingsSection==="bluetooth" ? connectionPage : Hub.settingsSection==="appearance" ? stylePage : Hub.settingsSection==="displays"||Hub.settingsSection==="display"||Hub.settingsSection==="screens" ? screensPage : Hub.settingsSection==="schedules" ? schedulesPage : Hub.settingsSection==="apptheme" ? appThemePage : Hub.settingsSection==="profiles" ? profilesPage : Hub.settingsSection==="system" ? systemPage : Hub.settingsSection==="link" ? linkPage : Hub.settingsSection==="sound" ? soundPage : optionsPage
                     // Pages slide in from the side on every section change.
                     onLoaded:{pageIn.restart();}
                     ParallelAnimation {
@@ -144,14 +152,14 @@ Item {
         bottomLeftRadius:current ? 34 : last ? 24 : 6;bottomRightRadius:bottomLeftRadius
         color:current ? Theme.secondaryContainer : Theme.alpha(Theme.light ? "#ffffff" : Theme.glassRaised,Theme.light ? .72 : .5)
         Behavior on color {ColorAnimation {duration:Theme.motion(160)}}
-        Behavior on topLeftRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
-        Behavior on bottomLeftRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+        Behavior on topLeftRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
+        Behavior on bottomLeftRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
         Rectangle {anchors.fill:parent;topLeftRadius:parent.topLeftRadius;topRightRadius:parent.topRightRadius;bottomLeftRadius:parent.bottomLeftRadius;bottomRightRadius:parent.bottomRightRadius;color:Theme.stateLayer;opacity:navMouse.pressed ? .12 : navMouse.containsMouse ? .06 : 0}
         RowLayout {
             anchors.fill:parent;anchors.leftMargin:14;anchors.rightMargin:14;spacing:14
             Rectangle {
                 Layout.preferredWidth:40;Layout.preferredHeight:40;radius:navRow.current ? 12 : 20;color:navRow.current ? Theme.primary : navRow.tint
-                Behavior on radius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+                Behavior on radius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
                 Glyph {anchors.centerIn:parent;name:navRow.item.icon;font.pixelSize:20;color:navRow.current ? Theme.onPrimary : navRow.tintInk}
             }
             ColumnLayout {
@@ -231,6 +239,12 @@ Item {
     }}
     Component {id:stylePage;Appearance {compact:settings.narrow;embedded:true}}
     Component {id:displayPage;Convergence {embedded:true}}
+    Component {id:screensPage;SettingsScreens {}}
+    Component {id:schedulesPage;SettingsSchedules {}}
+    Component {id:appThemePage;SettingsAppTheme {}}
+    Component {id:profilesPage;SettingsProfiles {}}
+    Component {id:systemPage;SettingsSystem {}}
+    Component {id:linkPage;SettingsLink {}}
     Component {id:connectionPage;ConnectionPanel {kind:Hub.settingsSection==="network" ? "wifi" : "bluetooth";embedded:true;backAction:()=>{Hub.settingsSection="";}}}
     Component {id:soundPage;Flickable {contentHeight:sound.implicitHeight;clip:true;boundsBehavior:Flickable.StopAtBounds
         ScrollBar.vertical:ScrollBar {}
@@ -300,6 +314,10 @@ Item {
             }
             MText {visible:Hub.settingsSection==="power";Layout.fillWidth:true;Layout.leftMargin:6;text:"Sleep, restart and shut down ask for a second tap.";font.pixelSize:11;color:Theme.subtext}
             // Shelf.
+            SectionLabel {visible:Hub.settingsSection==="taskbar";text:"Bar style"}
+            SegmentedButtons {visible:Hub.settingsSection==="taskbar";Layout.fillWidth:true;Layout.bottomMargin:12;current:Hub.prefs.barStyle||"islands"
+                options:[{value:"islands",label:"Islands",icon:"view_column"},{value:"dock",label:"Dock",icon:"call_to_action"},{value:"split",label:"Split",icon:"splitscreen"},{value:"edge",label:"Edge",icon:"bottom_navigation"}]
+                onPicked:value=>Hub.set("barStyle",value)}
             SettingToggle {visible:Hub.settingsSection==="taskbar";Layout.fillWidth:true;first:true;last:false;icon:"vertical_align_bottom";title:"Hide the shelf automatically";description:"Move to the bottom edge to reveal it.";checked:!!Hub.prefs.taskbarAutoHide;onToggled:Hub.set("taskbarAutoHide",!checked)}
             SettingToggle {visible:Hub.settingsSection==="taskbar";Layout.fillWidth:true;first:false;last:false;icon:"format_align_center";title:"Center apps";description:"System controls stay on the right.";checked:!!Hub.prefs.taskbarCenter;onToggled:Hub.set("taskbarCenter",!checked)}
             SettingToggle {visible:Hub.settingsSection==="taskbar";Layout.fillWidth:true;first:false;last:false;icon:"label";title:"Window labels";description:"Titles appear when there is room.";checked:!!Hub.prefs.taskbarLabels;onToggled:Hub.set("taskbarLabels",!checked)}

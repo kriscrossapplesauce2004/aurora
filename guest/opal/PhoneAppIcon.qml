@@ -13,13 +13,13 @@ Item {
     Rectangle {
         id:bubble
         anchors.horizontalCenter:parent.horizontalCenter;y:4
-        width:icon.size;height:width;radius:width/2
-        color:Theme.light ? "#ffffff" : Theme.alpha(Theme.glassRaised,.88)
+        width:icon.size;height:width;radius:width*.3
+        color:"transparent"
         border.width:icon.selected ? 3 : 0;border.color:Theme.primary
-        scale:mouse.pressed ? .88 : 1
-        Behavior on scale {NumberAnimation {duration:Theme.motion(220);easing.type:Easing.OutBack;easing.overshoot:2}}
-        Image {id:image;anchors.centerIn:parent;width:parent.width*.62;height:width;sourceSize:Qt.size(128,128);asynchronous:true;source:Quickshell.iconPath(icon.app.icon,true)}
-        Glyph {visible:image.status!==Image.Ready;anchors.centerIn:parent;name:Hub.glyphForApp(icon.app);font.pixelSize:icon.size*.45;color:Theme.primary}
+        opacity:mouse.pressed ? .8 : 1
+        scale:mouse.pressed ? .9 : 1
+        Behavior on scale {NumberAnimation {duration:Theme.motion(120);easing.type:Easing.OutCubic}}
+        AppIcon {anchors.fill:parent;anchors.margins:icon.selected ? 4 : 0;app:icon.app}
         // Running apps get a small dot under the bubble.
         Rectangle {
             visible:Hub.windows.some(w=>Hub.appForWindow(w)===icon.app)
@@ -31,7 +31,7 @@ Item {
         visible:icon.label
         anchors.top:bubble.bottom;anchors.topMargin:7;anchors.horizontalCenter:parent.horizontalCenter
         width:icon.width-4;horizontalAlignment:Text.AlignHCenter
-        text:icon.app.name;font.pixelSize:12
+        text:icon.app.name;role:"label";color:Theme.text
     }
     OpalMenu {id:menu;title:icon.app.name;icon:"apps";entries:visible ? Hub.appMenu(icon.app) : []}
     MouseArea {

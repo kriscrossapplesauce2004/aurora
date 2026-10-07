@@ -88,11 +88,14 @@ class Connectivity:
                 rows = self.run('nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY,DEVICE', 'device', 'wifi', 'list', '--rescan', 'yes' if verb == 'scan' else 'no') if powered else ''
                 items = []
                 seen_ssids = set()
+                # Saved profiles let the panel skip the password field and group known networks.
+                profiles = self.run('nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show') if powered else ''
+                saved = {f[0] for f in map(fields, profiles.splitlines()) if len(f) == 2 and 'wireless' in f[1]}
                 for line in rows.splitlines():
                     row = fields(line)
                     if len(row) == 5 and row[1] and row[1] not in seen_ssids:
                         seen_ssids.add(row[1])
-                        items.append(dict(active=row[0] == '*', ssid=row[1], signal=row[2], security=row[3], device=row[4]))
+                        items.append(dict(active=row[0] == '*', ssid=row[1], signal=int(row[2]) if row[2].isdigit() else 0, security=row[3], device=row[4], saved=row[1] in saved))
                 items.sort(key=lambda i: (not i['active'], -int(i['signal'] or 0)))
             else:
                 if verb == 'power':

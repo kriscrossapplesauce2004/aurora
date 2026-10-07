@@ -6,6 +6,7 @@ Item {
     property var output:null
     property bool fpsEnabled:false
     property int fps:0
+    property alias pill:activityPill
     property var shownStatus:Hub.status
     implicitHeight:48
     readonly property string timeText:Qt.formatDateTime(Hub.now,"HH:mm")
@@ -25,10 +26,8 @@ Item {
         MText {text:bar.timeText;font.pixelSize:15;font.weight:Font.Medium}
         Glyph {visible:Hub.unread>0;name:"notifications";font.pixelSize:15;color:Theme.subtext}
         MText {visible:Hub.unread>1;text:String(Math.min(99,Hub.unread));font.pixelSize:11;color:Theme.subtext}
-        Rectangle {
-            visible:Hub.focusRunning;Layout.preferredWidth:focusLabel.implicitWidth+16;Layout.preferredHeight:22;radius:11;color:Theme.primaryContainer
-            MText {id:focusLabel;anchors.centerIn:parent;text:bar.focusText;font.pixelSize:10;font.weight:Font.Medium;color:Theme.onContainer}
-        }
+        // Space for the activity pill. The pill itself floats above the bar so it can expand in place.
+        Item {id:pillSlot;visible:activityPill.visible;Layout.preferredWidth:activityPill.restWidth;Layout.preferredHeight:36}
         MText {visible:bar.fpsEnabled;text:bar.fps+" FPS";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.primary}
         Item {Layout.fillWidth:true}
         Glyph {visible:Hub.dnd;name:"do_not_disturb_on";font.pixelSize:16;color:Theme.text}
@@ -49,5 +48,14 @@ Item {
         onClicked:bar.show("controls")
         onPressAndHold:bar.show("convergence")
         Accessible.role:Accessible.Button;Accessible.name:bar.networkTooltip
+    }
+    // Live activities. Tap to expand, tap again to open, and it folds away alone.
+    ActivityPill {
+        id:activityPill
+        property real restWidth:128
+        onWidthChanged:if(!expanded)restWidth=Math.min(width,128)
+        output:bar.output;pillHeight:36;maxCompact:128;maxExpanded:bar.width-20;expandOnHover:false
+        x:Math.max(10,Math.min(pillSlot.mapToItem(bar,0,0).x,bar.width-width-10))
+        y:(bar.height-height)/2
     }
 }

@@ -44,7 +44,7 @@ Item {
         ParallelAnimation {
             id:flipIn
             NumberAnimation {target:face;property:"opacity";from:.2;to:1;duration:Theme.motion(260)}
-            NumberAnimation {target:faceShift;property:"y";from:28;to:0;duration:Theme.motion(360);easing.type:Easing.OutBack;easing.overshoot:1.1}
+            NumberAnimation {target:faceShift;property:"y";from:28;to:0;duration:Theme.motion(360);easing.type:Easing.OutCubic;easing.overshoot:1.1}
         }
         transform:Translate {id:faceShift}
         // Clock: analog cookie beside a large time and the date.
@@ -116,7 +116,7 @@ Item {
                 required property int index
                 width:6;height:index===stack.index ? 18 : 6;radius:3
                 color:index===stack.index ? Theme.primary : Theme.alpha(Theme.text,.3)
-                Behavior on height {NumberAnimation {duration:Theme.motion(240);easing.type:Easing.OutBack}}
+                Behavior on height {NumberAnimation {duration:Theme.motion(240);easing.type:Easing.OutCubic}}
                 MouseArea {anchors.fill:parent;anchors.margins:-4;onClicked:stack.index=parent.index}
             }
         }

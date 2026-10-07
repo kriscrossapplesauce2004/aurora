@@ -129,7 +129,17 @@ def merge_batteries(*groups):
             current = merged.get(key)
             if current is None or battery.get('source') == 'system':
                 merged[key] = battery
-    return list(merged.values())
+    # One headset can appear as a kernel power supply and as a Bluetooth device under different ids.
+    by_name = {}
+    for battery in merged.values():
+        name = str(battery.get('name', '')).strip().lower()
+        if battery.get('internal') or not name:
+            by_name[id(battery)] = battery
+            continue
+        current = by_name.get(name)
+        if current is None or battery.get('source') == 'system' and current.get('source') != 'system':
+            by_name[name] = battery
+    return list(by_name.values())
 
 
 def primary_battery(batteries):

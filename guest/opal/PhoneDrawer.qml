@@ -9,7 +9,11 @@ Item {
     property string category:"All apps"
     readonly property string filter:Hub.query.trim()
     readonly property bool math:filter!==""&&(filter.startsWith("=")||Hub.looksLikeMath(filter))
-    readonly property int columns:Math.max(4,Math.min(Hub.prefs.phoneRows||5,Math.floor((width-40)/76)))
+    readonly property int columns:PhoneState.columnsFor(width-32,width>=720)
+    readonly property real cellW:(width-32-(rail.visible ? 26 : 0))/columns
+    // The system keyboard covers the bottom of the sheet, so the sheet leaves room for it.
+    readonly property int keyboardInset:Hub.systemOskVisible&&Hub.systemOskReady ? Math.round(height*.38) : 0
+    readonly property var fileHits:filter.length>1 ? (PhoneState.activity.files||[]).filter(f=>f.title.toLowerCase().indexOf(filter.toLowerCase())>=0).slice(0,3) : []
     readonly property var apps:math ? [] : Hub.searchApps(filter,filter ? "All apps" : category)
     readonly property var letters:{
         const seen=[];
@@ -17,7 +21,7 @@ Item {
         return seen;
     }
     signal closeRequested()
-    function focusSearch() {search.forceActiveFocus();keyboardOpen=true;}
+    function focusSearch() {search.forceActiveFocus();keyboardOpen=true;PhoneState.refreshActivity();}
     function jump(letter) {
         const index=apps.findIndex(a=>{const l=(a.name||"#").charAt(0).toUpperCase();return letter==="#" ? !/[A-Z]/.test(l) : l===letter;});
         if(index>=0)grid.positionViewAtIndex(index,GridView.Beginning);
@@ -38,7 +42,8 @@ Item {
         topLeftRadius:32;topRightRadius:32
         color:Theme.alpha(Theme.light ? Theme.surfaceLow : Theme.mix(Theme.base,Theme.primaryContainer,.12),.97)
         ColumnLayout {
-            anchors.fill:parent;anchors.leftMargin:16;anchors.rightMargin:16;anchors.topMargin:8;anchors.bottomMargin:8;spacing:12
+            anchors.fill:parent;anchors.leftMargin:16;anchors.rightMargin:16;anchors.topMargin:8;anchors.bottomMargin:8+drawer.keyboardInset;spacing:12
+            Behavior on anchors.bottomMargin {NumberAnimation {duration:Theme.motion(200);easing.type:Easing.OutCubic}}
             // Handle and header: dragging down here closes the drawer.
             Item {
                 Layout.fillWidth:true;Layout.preferredHeight:20
@@ -78,8 +83,8 @@ Item {
                         model:Hub.recentApps.slice(0,drawer.columns)
                         Item {
                             required property var modelData
-                            Layout.fillWidth:true;Layout.preferredHeight:100
-                            PhoneAppIcon {anchors.centerIn:parent;app:parent.modelData;size:54;onActivated:Hub.launch(app)}
+                            Layout.fillWidth:true;Layout.preferredHeight:PhoneState.cellHeight(drawer.cellW)
+                            PhoneAppIcon {anchors.centerIn:parent;app:parent.modelData;size:PhoneState.iconSize(drawer.cellW);onActivated:Hub.launch(app)}
                         }
                     }
                 }
@@ -93,6 +98,14 @@ Item {
                         model:["All apps","Games","Create","Work","Internet","System"]
                         Chip {required property string modelData;text:modelData;implicitHeight:36;selected:drawer.category===modelData;glass:!selected;onClicked:drawer.category=modelData}
                     }
+                }
+            }
+            // Recent files that match the search, one tap to open.
+            Flow {
+                visible:drawer.fileHits.length>0;Layout.fillWidth:true;Layout.preferredHeight:childrenRect.height;spacing:6
+                Repeater {
+                    model:drawer.fileHits
+                    Chip {required property var modelData;text:modelData.title;icon:modelData.icon;implicitHeight:40;glass:false;onClicked:Quickshell.execDetached(["xdg-open",modelData.path])}
                 }
             }
             // Arithmetic answers appear in place of results.
@@ -114,14 +127,15 @@ Item {
                     id:grid
                     anchors.fill:parent;anchors.rightMargin:rail.visible ? 26 : 0
                     clip:true;model:drawer.apps;cacheBuffer:400
-                    cellWidth:width/drawer.columns;cellHeight:108
+                    cellWidth:width/drawer.columns;cellHeight:PhoneState.cellHeight(drawer.cellW)
                     boundsBehavior:Flickable.DragOverBounds
                     // Pulling past the top closes the drawer, like a phone launcher.
                     onDragEnded:if(contentY<-70)drawer.closeRequested()
                     delegate:Item {
                         required property var modelData
+                        required property int index
                         width:GridView.view.cellWidth;height:GridView.view.cellHeight
-                        PhoneAppIcon {anchors.centerIn:parent;app:parent.modelData;size:54;onActivated:Hub.launch(app)}
+                        PhoneAppIcon {anchors.centerIn:parent;app:parent.modelData;size:PhoneState.iconSize(drawer.cellW);selected:drawer.filter!==""&&parent.index===0;onActivated:Hub.launch(app)}
                     }
                     Column {
                         anchors.centerIn:parent;visible:drawer.apps.length===0;spacing:10

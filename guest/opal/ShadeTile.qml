@@ -37,7 +37,7 @@ Rectangle {
     color:active&&!pixel ? activeFill : Theme.alpha(Theme.tile,dense ? .82 : .94)
     Behavior on color {ColorAnimation {duration:Theme.motion(220)}}
     scale:pressed ? .975 : 1
-    Behavior on radius {NumberAnimation {duration:Theme.motion(220);easing.type:Easing.OutBack}}
+    Behavior on radius {NumberAnimation {duration:Theme.motion(220);easing.type:Easing.OutCubic}}
     Behavior on scale {NumberAnimation {duration:Theme.motion(180)}}
     Rectangle {anchors.fill:parent;radius:t.radius;color:t.active&&!t.pixel ? t.activeInk : Theme.stateLayer;opacity:t.pressed ? .12 : t.hovered ? .08 : 0
         Behavior on opacity {NumberAnimation {duration:Theme.motion(120)}}
@@ -51,7 +51,7 @@ Rectangle {
             Rectangle {
                 anchors.fill:parent
                 radius:t.toggleRadius
-                Behavior on radius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+                Behavior on radius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
                 Behavior on color {ColorAnimation {duration:Theme.motion(200)}}
                 color:t.dense&&t.iconOnly ? "transparent" : t.toggleColor
                 scale:toggleMouse.pressed ? .92 : 1
@@ -84,7 +84,7 @@ Rectangle {
         anchors.leftMargin:t.iconOnly ? t.width : t.mainHitLeft
         hoverEnabled:true
         cursorShape:Qt.PointingHandCursor
-        onClicked:mouse=>t.clicked(mouse.x,mouse.y)
+        onClicked:mouse=>t.clicked(mouse ? mouse.x : width/2,mouse ? mouse.y : height/2)
         onPressAndHold:if(t.settings)t.openSettings()
         activeFocusOnTab:true
         Keys.onReturnPressed:t.clicked(width/2,height/2)

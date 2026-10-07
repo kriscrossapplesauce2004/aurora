@@ -25,10 +25,10 @@ RowLayout {
             color:selected ? Theme.primary : Theme.alpha(Theme.light ? "#ffffff" : Theme.glassRaised,Theme.light ? .8 : .6)
             opacity:group.enabledAll ? 1 : .45
             Behavior on color {ColorAnimation {duration:Theme.motion(180)}}
-            Behavior on topLeftRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
-            Behavior on topRightRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
-            Behavior on bottomLeftRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
-            Behavior on bottomRightRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutBack}}
+            Behavior on topLeftRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
+            Behavior on topRightRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
+            Behavior on bottomLeftRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
+            Behavior on bottomRightRadius {NumberAnimation {duration:Theme.motion(260);easing.type:Easing.OutCubic}}
             Row {
                 anchors.centerIn:parent;spacing:6
                 Glyph {visible:!!segment.modelData.icon||segment.selected;name:segment.selected&&!segment.modelData.icon ? "check" : segment.modelData.icon||"";font.pixelSize:18;color:segment.selected ? Theme.onPrimary : Theme.text;anchors.verticalCenter:parent.verticalCenter}

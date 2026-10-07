@@ -21,6 +21,10 @@ hl.config({
     decoration = { rounding = p.rounding, blur = { enabled = true, size = 8, passes = 3 },
         shadow = { enabled = true, range = 35, render_power = 3, color = "rgba(080b1880)" } }
 })
+-- Touchscreens swipe workspaces natively. Phone mode uses the shell gesture layer instead. The 3-finger touchpad swipe lives in the user config.
+if opal_mode() ~= "phone" then
+    pcall(hl.config, { gestures = { workspace_swipe_touch = true } })
+end
 -- Written atomically by Opal after resolving each output's actual layout.
 -- Workspace monitor selectors follow workspaces moved between outputs.
 local runtime = os.getenv("XDG_RUNTIME_DIR")
@@ -40,7 +44,12 @@ hl.layer_rule({ match = { namespace = "^opal-(audio|shade)$" }, blur = true, ign
 -- The taskbar menu is a full-screen input host with one painted card.
 -- ignore_alpha keeps blur confined to that translucent card.
 hl.layer_rule({ match = { namespace = "^opal-taskbar-menu$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
+hl.layer_rule({ match = { namespace = "^opal-assistant$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
 hl.layer_rule({ match = { namespace = "^opal-power-profile$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
+-- Newer card surfaces animate themselves and blur only their painted cards.
+hl.layer_rule({ match = { namespace = "^opal-(convergence-toast|quick-access|tablet-dock|phone-dock|polkit|assistant|activity)$" }, blur = true, ignore_alpha = 0.1, no_anim = true })
+-- Gesture, edge and split layers are input surfaces: no blur and no compositor animation.
+hl.layer_rule({ match = { namespace = "^opal-(gesture|edge|split)$" }, blur = false, no_anim = true })
 hl.layer_rule({ match = { namespace = "^opal-(audio|shade)-dismiss$" }, blur = false, no_anim = true })
 local function bind(key, command)
     hl.unbind(key)
@@ -53,11 +62,17 @@ bind("SUPER + comma", qs .. "controls")
 bind("SUPER + N", qs .. "notifications")
 bind("SUPER + CTRL + P", qs .. "phone")
 bind("SUPER + CTRL + G", qs .. "gaming")
+bind("SUPER + CTRL + Q", qs .. "quickaccess")
 bind("SUPER + CTRL + D", qs .. "desktop")
 bind("SUPER + X", qs .. "controls")
 bind("SUPER + V", qs .. "clipboard")
+bind("SUPER + A", qs .. "assistant")
+-- Copilot keys send XF86Assistant or Super+Shift+F23.
+bind("XF86Assistant", qs .. "assistant")
+bind("SUPER + SHIFT + F23", qs .. "assistant")
 bind("SUPER + M", "kitty -e btop")
-bind("SUPER + ALT + L", "hyprlock")
+bind("SUPER + ALT + L", qs .. "lock")
+bind("SUPER + L", qs .. "lock")
 bind("XF86AudioRaiseVolume", "wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 3%+")
 bind("XF86AudioLowerVolume", "wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%-")
 bind("XF86AudioMute", "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle")
@@ -68,3 +83,5 @@ bind("XF86AudioNext", "playerctl next")
 bind("XF86AudioPrev", "playerctl previous")
 bind("XF86MonBrightnessUp", "brightnessctl set +5%")
 bind("XF86MonBrightnessDown", "brightnessctl set 5%-")
+-- Display settings saved from Opal.
+pcall(dofile, os.getenv("HOME") .. "/.config/hypr/opal-monitors.lua")

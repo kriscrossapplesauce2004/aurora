@@ -37,7 +37,7 @@ Popup {
     enter:Transition {
         ParallelAnimation {
             NumberAnimation {property:"opacity";from:0;to:1;duration:Theme.motion(150)}
-            NumberAnimation {property:"scale";from:.92;to:1;duration:Theme.motion(220);easing.type:Easing.OutBack;easing.overshoot:1.2}
+            NumberAnimation {property:"scale";from:.92;to:1;duration:Theme.motion(220);easing.type:Easing.OutCubic;easing.overshoot:1.2}
         }
     }
     exit:Transition {NumberAnimation {property:"opacity";to:0;duration:Theme.motion(110)}}

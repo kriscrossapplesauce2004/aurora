@@ -29,7 +29,7 @@ Island {
                         width: 8; height: 8; radius: 4; color: modelData
                         x: index % 2 ? 11 : 1; y: index < 2 ? 1 : 11
                         scale: fieldMouse.containsMouse && !Theme.reduceMotion ? 1.18 : 1
-                        Behavior on scale { NumberAnimation { duration: Theme.motion(220) + index * 30; easing.type: Easing.OutBack } }
+                        Behavior on scale { NumberAnimation { duration: Theme.motion(220) + index * 30; easing.type: Easing.OutCubic } }
                     }
                 }
             }
