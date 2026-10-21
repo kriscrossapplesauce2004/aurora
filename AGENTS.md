@@ -5,6 +5,10 @@ Adreno 640). Android stays PID1; a Debian LXC guest on the same downstream
 kernel takes the display via libhybris→hwcomposer. Ships as custom boot.img +
 Magisk module + Zygisk - never a ROM, never touches /system.
 
+**Deprecated 2026-10-21.** The project is archived and no longer developed;
+the remote is read-only. Treat everything below as historical reference. See
+`docs/history/retrospective-2026-10-21.md`.
+
 **Continuing an existing session?** Read `docs/CONTINUE.md` first. It is the
 session protocol: orientation, house rules, tracking, device access, and
 private-branch handling. Then run `tools/agent-status.sh`.

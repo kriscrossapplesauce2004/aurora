@@ -4,6 +4,10 @@ Status: current navigation
 Authority: repository maintainers
 Last reviewed: 2026-09-16
 
+**The project was deprecated on 2026-10-21 and the repository archived.**
+There is no session to continue; this protocol is kept as a record. See the
+[retrospective](history/retrospective-2026-10-21.md).
+
 Read this before touching anything. It is the entry point for an agent that
 is asked to "continue" without further instructions. It does not replace
 [AGENTS.md](../AGENTS.md); it tells you how to pick up the work and what the

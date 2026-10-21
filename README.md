@@ -1,5 +1,11 @@
 # Aurora
 
+> [!WARNING]
+> **Deprecated (2026-10-21).** Aurora is no longer developed and this
+> repository is archived. The code and documentation stay available as a
+> reference. Start with the [retrospective](docs/history/retrospective-2026-10-21.md)
+> for what was proven, what failed, and what was left open.
+
 Android convergence layer for Android 16
 
 Android stays PID1; a Wayland desktop runs as an LXC guest

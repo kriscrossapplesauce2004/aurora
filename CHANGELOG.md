@@ -3,7 +3,9 @@
 This file tracks project-wide releases. Component-level version numbers may be
 different and are recorded in the release manifest.
 
-## 0.5.0 "Aqua" - in development
+## 0.5.0 "Aqua" - never released
+
+The project was deprecated on 2026-10-21 at `0.5.0-alpha.2`.
 
 ### Added
 

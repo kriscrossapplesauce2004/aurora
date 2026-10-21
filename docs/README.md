@@ -1,6 +1,6 @@
 # Aurora documentation
 
-Status: current navigation
+Status: deprecated 2026-10-21; kept as reference
 Authority: repository documentation maintainers
 Last reviewed: 2026-07-30
 
@@ -13,6 +13,9 @@ Internal desktop mode is time-sliced. It stops SurfaceFlinger and freezes
 `system_server` while the guest owns the panel. Android is not fully live in
 that mode. External convergence is designed to keep Android live, but is not
 yet hardware-qualified end to end.
+
+Aurora is deprecated and the repository archived. The
+[retrospective](history/retrospective-2026-10-21.md) summarises the outcome.
 
 ## Start here
 
